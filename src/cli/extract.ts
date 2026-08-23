@@ -5,6 +5,7 @@ import { createRustParser } from '../parser.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
 import { buildGraph } from '../core/graph.ts';
 import { layout, type LayoutedGraph } from '../layout/elk.ts';
+import { findAmbiguities, type AmbiguityReport } from '../analysis/ambiguity.ts';
 import type { AtlasIR } from '../core/ir.ts';
 import type { Coverage, SourceFile } from '../dialects/types.ts';
 import type { FileFacts } from '../dialects/bevy-0.19/index.ts';
@@ -21,6 +22,7 @@ export interface Artifact {
     filesWithParseErrors: number;
   };
   coverage: Coverage;
+  ambiguity: AmbiguityReport;
   ir: AtlasIR;
   layout: LayoutedGraph;
 }
@@ -68,6 +70,7 @@ export async function extractCorpus(root: string): Promise<Artifact> {
 
   const { output, coverage } = bevy019.link(facts);
   const ir: AtlasIR = { dialect: bevy019.id, ...output };
+  const ambiguity = findAmbiguities(ir);
   const positioned = await layout(buildGraph(ir));
 
   return {
@@ -79,6 +82,7 @@ export async function extractCorpus(root: string): Promise<Artifact> {
       filesWithParseErrors,
     },
     coverage,
+    ambiguity,
     ir,
     layout: positioned,
   };
@@ -109,6 +113,16 @@ async function main(): Promise<void> {
       `  |  registrations ${coverage.registrationsResolved}/${coverage.registrations}` +
       `  |  plugins ${coverage.pluginsReachable}/${coverage.plugins} reachable`,
   );
+  const { ambiguities, excludedForScope } = artifact.ambiguity;
+  const pairs = new Set(ambiguities.map((a) => `${a.a}|${a.b}`)).size;
+  console.log(
+    `  ambiguities: ${pairs} unordered system pairs over ${ambiguities.length} state overlaps` +
+      (excludedForScope > 0 ? `  (${excludedForScope} executors excluded: unresolved scope)` : ''),
+  );
+  for (const found of ambiguities.slice(0, 3)) {
+    console.log(`    ${found.a.split('::').pop()} vs ${found.b.split('::').pop()} on ${found.stateId} [${found.schedule}]`);
+  }
+
   const hubs = ir.states.filter((s) => s.ubiquitous);
   if (hubs.length > 0) {
     console.log(`  ubiquitous state demoted to badges: ${hubs.map((h) => h.display).slice(0, 8).join(', ')}` +

@@ -151,8 +151,14 @@ export function scanFile(tree: Parser.Tree, file: SourceFile): FileFacts {
       const args = call.childForFieldName('arguments')?.namedChildren ?? [];
       const [first, ...rest] = args;
       if (!first) continue;
-      const terms = scheduleOverride === undefined ? rest : args;
-      const schedule = scheduleOverride ?? first.text.replace(/\s+/g, '');
+      // `App::add_systems(schedule, systems)` takes two arguments; `Schedule::add_systems(systems)`
+      // takes one. Treating the lone argument as a schedule name would silently drop every
+      // system registered directly on a Schedule.
+      const receiverIsSchedule = scheduleOverride === undefined && args.length === 1;
+      const terms = scheduleOverride === undefined && !receiverIsSchedule ? rest : args;
+      const receiverText =
+        (call.childForFieldName('function')?.childForFieldName('value')?.text ?? 'schedule').replace(/\s+/g, '');
+      const schedule = scheduleOverride ?? (receiverIsSchedule ? receiverText : first.text.replace(/\s+/g, ''));
       const owner = ownerOf(call, appRoot);
       for (const term of terms) {
         for (const leaf of walkTerm(term, { runConditions: [], inSets: [], before: [], after: [] }, schedule)) {

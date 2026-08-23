@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractIR, summarise } from '../scripts/corpus-stats.ts';
+import { findAmbiguities } from '../src/analysis/ambiguity.ts';
 import { findBevyExamples } from './corpus.ts';
 
 const dir = findBevyExamples();
@@ -70,6 +71,45 @@ describe('M2: corpus snapshot — examples/', () => {
     const parameterised = ids.filter((id) => id.includes('<'));
     assert.ok(parameterised.length > 20, `expected many parameterised state keys, got ${parameterised.length}`);
     assert.ok(ids.some((id) => id.startsWith('Assets<')), 'Assets<T> must not collapse to Assets');
+  });
+
+  test('no reported ambiguity has an ordering constraint between the pair (§8 cond. 2)', { skip }, () => {
+    const { ir } = load();
+    const byId = new Map(ir.executors.map((e) => [e.id, e]));
+    const offenders: string[] = [];
+    for (const found of findAmbiguities(ir).ambiguities) {
+      const a = byId.get(found.a);
+      const b = byId.get(found.b);
+      if (!a || !b) continue;
+      const names = (e: typeof a) => [e.display, e.display.replace(/::<.*/, ''), e.id.split('::').pop()!];
+      const linked =
+        (a.registration?.before ?? []).some((t) => names(b).includes(t)) ||
+        (a.registration?.after ?? []).some((t) => names(b).includes(t)) ||
+        (b.registration?.before ?? []).some((t) => names(a).includes(t)) ||
+        (b.registration?.after ?? []).some((t) => names(a).includes(t));
+      if (linked) offenders.push(`${a.display} vs ${b.display}`);
+    }
+    assert.deepEqual(offenders.slice(0, 5), []);
+  });
+
+  test('ambiguity analysis stays within a plausible band', { skip }, () => {
+    const report = findAmbiguities(load().ir);
+    const pairs = new Set(report.ambiguities.map((a) => `${a.a}|${a.b}`)).size;
+    // ~400 tiny demo apps that never enable ambiguity_detection; a few hundred pairs is
+    // expected. A jump to thousands means a condition stopped being applied.
+    assert.ok(pairs > 50, `suspiciously few ambiguities: ${pairs}`);
+    assert.ok(pairs < 2000, `ambiguity explosion: ${pairs} pairs suggests a condition regressed`);
+  });
+
+  test('ambiguities never cross app scopes or schedules (§8 cond. 1)', { skip }, () => {
+    const { ir } = load();
+    const byId = new Map(ir.executors.map((e) => [e.id, e]));
+    for (const found of findAmbiguities(ir).ambiguities) {
+      const a = byId.get(found.a)!;
+      const b = byId.get(found.b)!;
+      assert.ok(a.appScopes.includes(found.appScope) && b.appScopes.includes(found.appScope));
+      assert.equal(a.registration?.schedule, b.registration?.schedule);
+    }
   });
 
   test('the M3 boundary is where the design says it is', { skip }, () => {

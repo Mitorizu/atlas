@@ -14,7 +14,9 @@
     "extract": "tsx src/cli/extract.ts",
     "dev": "vite",
     "build:web": "vite build",
-    "corpus:stats": "tsx scripts/corpus-stats.ts"
+    "corpus:stats": "tsx scripts/corpus-stats.ts",
+    "oracle:build": "cargo build --offline --manifest-path harness/Cargo.toml",
+    "oracle": "cargo run --offline --quiet --manifest-path harness/Cargo.toml"
   },
   "overrides": {
     "tree-sitter": "0.25.1"
