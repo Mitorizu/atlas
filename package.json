@@ -10,18 +10,29 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "grammar:report": "tsx scripts/grammar-report.ts"
+    "grammar:report": "tsx scripts/grammar-report.ts",
+    "extract": "tsx src/cli/extract.ts",
+    "dev": "vite",
+    "build:web": "vite build"
   },
   "overrides": {
     "tree-sitter": "0.25.1"
   },
   "dependencies": {
+    "@xyflow/react": "12.11.3",
+    "elkjs": "0.12.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "tree-sitter": "0.25.1",
     "tree-sitter-rust": "0.24.0"
   },
   "devDependencies": {
     "@types/node": "22.18.8",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.1",
+    "@vitejs/plugin-react": "5.0.4",
     "tsx": "4.20.6",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
   }
 }

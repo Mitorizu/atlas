@@ -1,0 +1,101 @@
+:root {
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --ink: #1b2027;
+  --muted: #6b7683;
+  --line: #d9dee5;
+  --warn: #a8500a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181d;
+    --panel: #1c2229;
+    --ink: #e7ecf2;
+    --muted: #93a0ad;
+    --line: #2e3742;
+    --warn: #e2a45c;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+header strong { letter-spacing: 0.02em; }
+.crumb { color: var(--muted); font-size: 12px; }
+.crumb::before { content: "·"; margin-right: 10px; color: var(--line); }
+.crumb.warn { color: var(--warn); }
+.spacer { flex: 1; }
+.legend { display: flex; gap: 14px; align-items: center; color: var(--muted); font-size: 12px; }
+.legend .k { display: inline-flex; align-items: center; gap: 6px; }
+
+.react-flow { flex: 1; }
+.react-flow__renderer { background: var(--bg); }
+
+.node {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.node .label { font-weight: 500; }
+.node.system { border-left: 3px solid var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.node.system.unregistered { opacity: 0.5; }
+.node.data { border-left-width: 3px; border-left-style: solid; }
+.node .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.node .tag {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+}
+.node .tag.muted { opacity: 0.75; }
+
+/* Motion only on interaction (§9.3). */
+.react-flow__edge:hover .react-flow__edge-path,
+.react-flow__edge.selected .react-flow__edge-path { stroke-width: 3.2; }
+
+.state-screen {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; color: var(--muted);
+}
+.state-screen h1 { color: var(--ink); font-size: 18px; margin: 0; }
+.state-screen code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px;
+}
+
+/* React Flow chrome ships light-themed; bind it to our tokens so dark mode works. */
+.react-flow__controls {
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  width: 26px;
+  height: 26px;
+}
+.react-flow__controls-button:hover { background: var(--bg); }
+.react-flow__controls-button svg { fill: var(--ink); }
+.react-flow__attribution {
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+}
+.react-flow__attribution a { color: var(--muted); }
