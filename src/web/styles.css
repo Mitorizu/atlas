@@ -207,3 +207,35 @@ header strong { letter-spacing: 0.02em; }
 .inspector .mode { font-size: 10px; color: var(--muted); }
 .inspector .mode.readwrite, .inspector .mode.write { color: var(--alarm); }
 .inspector .source { color: var(--ink); font-family: ui-monospace, Menlo, monospace; }
+
+/* ---- orbit tier: module regions (§9.2) ---------------------------------- */
+.node.group {
+  display: flex; flex-direction: column; gap: 6px;
+  align-items: flex-start; justify-content: flex-start;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden;
+}
+.node.group .group-head { display: flex; align-items: center; gap: 8px; }
+.node.group .group-head .label { font-size: 1.4em; font-weight: 600; }
+.node.group .group-head .tag { font-size: 0.55em; }
+.node.group .badge { font-size: 0.5em; }
+.node.group .group-state { display: flex; flex-wrap: wrap; gap: 4px; }
+.node.group .badge.more { border-left-width: 1px; }
+
+/* Tier changes cross-fade rather than cut (§9.2). */
+.tier-fade { transition: opacity 140ms ease; }
+.tier-fade.swapping { opacity: 0.35; }
+
+.tier-indicator {
+  position: absolute; right: 12px; bottom: 12px; z-index: 5;
+  display: flex; gap: 4px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 3px 4px; font-size: 11px;
+}
+.tier-indicator button {
+  font: inherit; cursor: pointer; border: none; border-radius: 4px;
+  background: transparent; color: var(--muted); padding: 2px 8px;
+}
+.tier-indicator button.active { background: var(--bg); color: var(--ink); }

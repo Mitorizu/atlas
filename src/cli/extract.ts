@@ -5,6 +5,7 @@ import { createRustParser } from '../parser.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
 import { buildGraph } from '../core/graph.ts';
 import { layout, type LayoutedGraph } from '../layout/elk.ts';
+import { layoutTiers, type Tiers } from '../layout/tiers.ts';
 import { findAmbiguities, type AmbiguityReport } from '../analysis/ambiguity.ts';
 import type { AtlasIR } from '../core/ir.ts';
 import type { Coverage, SourceFile } from '../dialects/types.ts';
@@ -25,6 +26,8 @@ export interface Artifact {
   ambiguity: AmbiguityReport;
   ir: AtlasIR;
   layout: LayoutedGraph;
+  /** Precomputed LOD tiers for the orientation view (§9.2). */
+  tiers: Tiers;
 }
 
 export function rustFiles(root: string): string[] {
@@ -71,7 +74,9 @@ export async function extractCorpus(root: string): Promise<Artifact> {
   const { output, coverage } = bevy019.link(facts);
   const ir: AtlasIR = { dialect: bevy019.id, ...output };
   const ambiguity = findAmbiguities(ir);
-  const positioned = await layout(buildGraph(ir));
+  const graph = buildGraph(ir);
+  const positioned = await layout(graph);
+  const tiers = await layoutTiers(graph, ir);
 
   return {
     meta: {
@@ -85,6 +90,7 @@ export async function extractCorpus(root: string): Promise<Artifact> {
     ambiguity,
     ir,
     layout: positioned,
+    tiers,
   };
 }
 
@@ -131,6 +137,11 @@ async function main(): Promise<void> {
   if (coverage.unresolvedSamples.length > 0) {
     console.log(`  unresolved registrations e.g. ${coverage.unresolvedSamples.slice(0, 3).join(', ')}`);
   }
+  console.log(
+    `  tiers: ${artifact.tiers.street.groups.length} module groups, ` +
+      `${artifact.tiers.orbit.nodes.length} orbit nodes, ` +
+      `${Math.round(artifact.tiers.width)}x${Math.round(artifact.tiers.height)}`,
+  );
   console.log(`  layout ${Math.round(artifact.layout.width)}x${Math.round(artifact.layout.height)} -> ${out}`);
 }
 

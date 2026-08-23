@@ -70,4 +70,46 @@ export function DataNode({ data }: NodeProps<Node<DataNodeData>>) {
   );
 }
 
-export const nodeTypes = { system: SystemNode, data: DataNode };
+export interface GroupData extends Record<string, unknown> {
+  label: string;
+  executors: number;
+  states: number;
+  width: number;
+  height: number;
+  topState: Array<{ id: string; label: string; category: string }>;
+}
+
+/** A module region at the Orbit tier: the whole group collapsed to one box (§9.2). */
+export function GroupNode({ data }: NodeProps<Node<GroupData>>) {
+  return (
+    <div
+      className="node group"
+      style={{
+        width: data.width,
+        height: data.height,
+        // Type scales with the region so a fitted whole-corpus view stays legible.
+        fontSize: Math.max(13, Math.min(data.width, data.height) / 12),
+      }}
+    >
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <div className="group-head">
+        <span className="label">{data.label}</span>
+        <span className="tag">{data.executors} systems</span>
+        {data.states > 0 ? <span className="tag">{data.states} state</span> : null}
+      </div>
+      <div className="group-state">
+        {data.topState.map((s) => (
+          <span key={s.id} className="badge" style={{ borderColor: CATEGORY_COLOR[s.category] }}>
+            {s.label}
+          </span>
+        ))}
+        {data.states > data.topState.length ? (
+          <span className="badge more">+{data.states - data.topState.length}</span>
+        ) : null}
+      </div>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+    </div>
+  );
+}
+
+export const nodeTypes = { system: SystemNode, data: DataNode, group: GroupNode };

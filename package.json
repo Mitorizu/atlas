@@ -18,7 +18,8 @@
     "oracle:build": "cargo build --offline --manifest-path harness/Cargo.toml",
     "oracle": "cargo run --offline --quiet --manifest-path harness/Cargo.toml",
     "diff": "tsx src/cli/diff.ts",
-    "demo": "./demo/demo-diff.sh"
+    "demo": "./demo/demo-diff.sh",
+    "atlas": "./bin/atlas.mjs"
   },
   "overrides": {
     "tree-sitter": "0.25.1"
@@ -39,5 +40,15 @@
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "7.3.6"
-  }
+  },
+  "bin": {
+    "atlas": "./bin/atlas.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist",
+    "reference",
+    "README.md"
+  ]
 }

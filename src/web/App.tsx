@@ -1,63 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ReactFlow, Background, Controls, MarkerType, type Edge, type Node } from '@xyflow/react';
+import { useEffect, useMemo, useState } from 'react';
+import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { nodeTypes, type Badge, type DataNodeData, type SystemData } from './nodes.tsx';
-import { edgeStyle, EDGE_COLOR } from './theme.ts';
 import { describeNode, type Artifact } from './artifact.ts';
 import { Inspector } from './Inspector.tsx';
+import { Canvas } from './Canvas.tsx';
 import './styles.css';
-
-function toFlow(artifact: Artifact): { nodes: Node[]; edges: Edge[] } {
-  const focusMeta = artifact.focus?.meta ?? {};
-
-  const nodes: Node[] = artifact.layout.nodes.map((n) => {
-    const meta = focusMeta[n.id];
-    const shared = { role: meta?.role ?? null, conflicted: meta?.conflicted ?? false, seed: meta?.seed ?? false };
-    return n.kind === 'executor'
-      ? {
-          id: n.id,
-          type: 'system',
-          position: { x: n.x, y: n.y },
-          data: {
-            label: n.label,
-            schedule: n.schedule,
-            unregistered: n.unregistered,
-            badges: n.badges as Badge[] | undefined,
-            ...shared,
-          } satisfies SystemData,
-        }
-      : {
-          id: n.id,
-          type: 'data',
-          position: { x: n.x, y: n.y },
-          data: {
-            label: n.label,
-            category: n.category ?? 'synthetic',
-            ubiquitous: n.ubiquitous,
-            ...shared,
-          } satisfies DataNodeData,
-        };
-  });
-
-  const edges: Edge[] = artifact.layout.edges.map((e) => {
-    const style = edgeStyle(e.mode);
-    const color = EDGE_COLOR[e.mode] ?? EDGE_COLOR['read']!;
-    // Reads use an open arrowhead, writes a filled one; readwrite gets both ends (§7.5).
-    const head = e.mode === 'read' ? MarkerType.Arrow : MarkerType.ArrowClosed;
-    const removed = focusMeta[e.source]?.role === 'removed' || focusMeta[e.target]?.role === 'removed';
-    return {
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      style: removed ? { ...style, opacity: 0.35, strokeDasharray: '2 4' } : style,
-      markerEnd: { type: head, color, width: 18, height: 18 },
-      ...(e.doubleHeaded ? { markerStart: { type: head, color, width: 18, height: 18 } } : {}),
-      animated: false,
-    };
-  });
-
-  return { nodes, edges };
-}
 
 export default function App() {
   const [artifact, setArtifact] = useState<Artifact | null>(null);
@@ -71,13 +18,10 @@ export default function App() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const flow = useMemo(() => (artifact ? toFlow(artifact) : { nodes: [], edges: [] }), [artifact]);
   const detail = useMemo(
     () => (artifact && selected ? describeNode(artifact, selected) : null),
     [artifact, selected],
   );
-  const onNodeClick = useCallback((_: unknown, node: Node) => setSelected(node.id), []);
-
   if (error) {
     return (
       <div className="state-screen">
@@ -166,19 +110,9 @@ export default function App() {
       ) : null}
 
       <div className="canvas">
-        <ReactFlow
-          nodes={flow.nodes}
-          edges={flow.edges}
-          nodeTypes={nodeTypes}
-          onNodeClick={onNodeClick}
-          onPaneClick={() => setSelected(null)}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.02}
-        >
-          <Background gap={22} size={1} />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+        <ReactFlowProvider>
+          <Canvas artifact={artifact} onSelect={setSelected} onDeselect={() => setSelected(null)} />
+        </ReactFlowProvider>
         {detail ? (
           <Inspector
             detail={detail}
