@@ -1,3 +1,4 @@
+import { isMain } from '../is-main.ts';
 import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { createRustParser } from '../parser.ts';
@@ -102,4 +103,9 @@ async function main(): Promise<void> {
   console.log(`  layout ${Math.round(artifact.layout.width)}x${Math.round(artifact.layout.height)} -> ${out}`);
 }
 
-if (import.meta.filename === process.argv[1]) await main();
+if (isMain(import.meta.filename)) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

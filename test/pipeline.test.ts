@@ -26,6 +26,7 @@ const ir: AtlasIR = {
     { executorId: 'm::s', stateId: 'C', mode: 'readwrite', optional: false,
       loc: { file: 'm.rs', line: 1, col: 1, byteStart: 0, byteEnd: 1 } },
   ],
+  setOrderings: [],
 };
 
 describe('M1: graph construction (§7.5)', () => {

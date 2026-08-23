@@ -29,7 +29,10 @@ export async function layout(graph: Graph): Promise<LayoutedGraph> {
       'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
       'elk.layered.spacing.nodeNodeBetweenLayers': '90',
       'elk.spacing.nodeNode': '28',
-      'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+      // NETWORK_SIMPLEX overflows the call stack on the full examples corpus
+      // (2,018 nodes / 3,911 edges); BRANDES_KOEPF completes in ~13s. Measured at M2 with
+      // scripts/layout-probe.ts.
+      'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
     },
     children: graph.nodes.map((n) => ({ id: n.id, width: n.width, height: n.height })),
     edges: graph.edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),

@@ -5,6 +5,7 @@
  * Exits non-zero if any node kind or field required by the dialect is absent from
  * the installed grammar.
  */
+import { isMain } from '../src/is-main.ts';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { rustNodeTypes, type NodeTypeInfo } from '../src/parser.ts';
@@ -111,4 +112,4 @@ function main(): void {
   console.log('contract: OK');
 }
 
-if (import.meta.filename === process.argv[1]) main();
+if (isMain(import.meta.filename)) main();

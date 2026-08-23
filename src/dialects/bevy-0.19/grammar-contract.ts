@@ -20,6 +20,11 @@ export const REQUIRED_NODES: Readonly<Record<string, readonly string[]>> = {
   attribute_item: [],
   attribute: [],
   use_declaration: ['argument'],
+  mod_item: ['name', 'body'],
+  token_tree: [],
+  field_declaration_list: [],
+  field_declaration: ['name', 'type'],
+  type_parameters: [],
 
   // ---- parameter types (pass 2) ---------------------------------------------
   parameters: [],
@@ -43,6 +48,7 @@ export const REQUIRED_NODES: Readonly<Record<string, readonly string[]>> = {
   scoped_identifier: ['path', 'name'],
   generic_function: ['function', 'type_arguments'],
   closure_expression: ['parameters', 'body'],
+  closure_parameters: [],
 } as const;
 
 /** Node kinds that carry `&`/`&mut` distinction, per observed grammar shape. */

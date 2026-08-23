@@ -13,7 +13,8 @@
     "grammar:report": "tsx scripts/grammar-report.ts",
     "extract": "tsx src/cli/extract.ts",
     "dev": "vite",
-    "build:web": "vite build"
+    "build:web": "vite build",
+    "corpus:stats": "tsx scripts/corpus-stats.ts"
   },
   "overrides": {
     "tree-sitter": "0.25.1"

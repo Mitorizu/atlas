@@ -1,5 +1,5 @@
 import type Parser from 'tree-sitter';
-import type { Access, ExecutorNode, StateNode } from '../core/ir.ts';
+import type { Access, ExecutorNode, SetOrdering, StateNode } from '../core/ir.ts';
 
 export interface SourceFile {
   /** Path as atlas was given it, used for SourceLoc and display. */
@@ -14,6 +14,7 @@ export interface DialectOutput {
   executors: ExecutorNode[];
   states: StateNode[];
   accesses: Access[];
+  setOrderings: SetOrdering[];
 }
 
 /**

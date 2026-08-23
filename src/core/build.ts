@@ -9,6 +9,7 @@ export function mergeOutputs(dialect: string, outputs: DialectOutput[]): AtlasIR
   for (const out of outputs) {
     ir.executors.push(...out.executors);
     ir.accesses.push(...out.accesses);
+    ir.setOrderings.push(...out.setOrderings);
     for (const state of out.states) {
       const existing = states.get(state.id);
       if (!existing) states.set(state.id, { ...state });

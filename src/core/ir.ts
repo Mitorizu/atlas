@@ -47,8 +47,13 @@ export interface StateNode {
 
 export interface Registration {
   schedule: string;
-  before: ExecutorId[];
-  after: ExecutorId[];
+  /**
+   * Ordering targets as WRITTEN at the registration site — a system name or a set name.
+   * Resolution to concrete ExecutorIds needs the whole-corpus tables and happens during
+   * ambiguity analysis (§8 condition 2), not during extraction.
+   */
+  before: string[];
+  after: string[];
   inSets: string[];
   chained: boolean;
   runConditions: string[];
@@ -85,12 +90,25 @@ export interface Access {
   loc: SourceLoc;
 }
 
+/**
+ * Ordering declared between SYSTEM SETS via `configure_sets` (§7.6). A system in set
+ * `after` is ordered after every system in set `before`; §8 condition 2 walks these
+ * together with system-level constraints, or plugin-structured code reads as unordered.
+ */
+export interface SetOrdering {
+  before: string;
+  after: string;
+  schedule: string;
+  appScope: string;
+}
+
 export interface AtlasIR {
   dialect: string;
   rev?: string;
   executors: ExecutorNode[];
   states: StateNode[];
   accesses: Access[];
+  setOrderings: SetOrdering[];
 }
 
 /** The synthetic node representing unbounded structural mutation via `Commands` (§7.4). */
@@ -106,5 +124,5 @@ export function structuralStateNode(): StateNode {
 }
 
 export function emptyIR(dialect: string): AtlasIR {
-  return { dialect, executors: [], states: [], accesses: [] };
+  return { dialect, executors: [], states: [], accesses: [], setOrderings: [] };
 }

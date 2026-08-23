@@ -3,34 +3,33 @@ import {
   STRUCTURAL_STATE_ID,
   structuralStateNode,
   type Access,
-  type AccessMode,
   type ExecutorNode,
+  type Registration,
   type SourceLoc,
-  type StateCategory,
   type StateNode,
 } from '../../core/ir.ts';
 import type { Dialect, DialectOutput, SourceFile } from '../types.ts';
-import { baseName, isMutableRef, renderType, typeArgs, wasScoped } from './types.ts';
+import { collectDeclarations, descend, enclosingModules, type Declarations } from './declarations.ts';
+import { analyzeParam, type RawAccess } from './params.ts';
+import {
+  collectObservers,
+  collectRegistrations,
+  collectSetOrderings,
+  leafLabel,
+  OBSERVER_SCHEDULE,
+  type RegistrationLeaf,
+} from './registration.ts';
 
 /**
- * Bevy 0.19 dialect (DESIGN.md §7).
+ * Bevy 0.19 dialect (DESIGN.md §7). Passes 1-3 complete as of Milestone 2:
+ *   1. declarations  — derives, `SystemParam` structs, `impl Plugin`
+ *   2. candidates    — every `fn` whose signature declares access, SystemParams expanded
+ *   3. registration  — `add_systems`, `add_observer`, `configure_sets`, with §7.6 propagation
  *
- * Milestone 1 implements the vertical slice: `Commands`, `Res`/`ResMut`, and `Query`
- * data terms, plus `add_systems` registration. The parameter vocabulary is completed at
- * Milestone 2 (`Single`, `Populated`, `MessageReader`/`Writer`, `On`, `ParamSet`,
- * `SystemParam` expansion) and plugin resolution at Milestone 3. A parameter whose type
- * this dialect does not recognise contributes no access — it is not state as far as the
- * declared-boundary invariant (§2) is concerned.
+ * Pass 4 (plugin -> App resolution, so `appScope` is real for plugin-registered systems)
+ * is Milestone 3; until then a file that does not build an App reports scope `unknown`
+ * and its executors are excluded from ambiguity analysis rather than guessed into a scope.
  */
-
-/** Parameter types that resolve to a resource-category state node. */
-const RESOURCE_PARAMS: Record<string, AccessMode> = { Res: 'read', ResMut: 'readwrite' };
-/** Parameter types whose first type argument is a query data term. */
-const QUERY_PARAMS = new Set(['Query']);
-/** Parameter types that are private to one system and are never state nodes (§7.1). */
-const EXCLUDED_PARAMS = new Set(['Local']);
-/** Unbounded structural mutation (§7.4). */
-const STRUCTURAL_PARAMS = new Set(['Commands']);
 
 function loc(file: SourceFile, node: Parser.SyntaxNode): SourceLoc {
   return {
@@ -42,194 +41,94 @@ function loc(file: SourceFile, node: Parser.SyntaxNode): SourceLoc {
   };
 }
 
-interface RawAccess {
-  state: string;
-  category: StateCategory;
-  mode: AccessMode;
-  optional: boolean;
-  scoped: boolean;
-}
-
-/** Walks a `Query<D>` data term: `&T`, `&mut T`, `Option<&T>`, and tuples thereof. */
-function queryData(node: Parser.SyntaxNode, optional: boolean, out: RawAccess[]): void {
-  switch (node.type) {
-    case 'tuple_type':
-      for (const child of node.namedChildren) queryData(child, optional, out);
-      return;
-    case 'reference_type': {
-      const inner = node.childForFieldName('type');
-      if (!inner) return;
-      out.push({
-        state: renderType(inner),
-        category: 'component',
-        mode: isMutableRef(node) ? 'readwrite' : 'read',
-        optional,
-        scoped: wasScoped(inner),
-      });
-      return;
-    }
-    case 'generic_type': {
-      // `Option<&T>` contributes the inner term, marked optional.
-      if (baseName(node) === 'Option') {
-        for (const arg of typeArgs(node)) queryData(arg, true, out);
-      }
-      return;
-    }
-    default:
-      // `Entity`, `&mut Mut<T>` wrappers and other terms are completed at M2.
-      return;
-  }
-}
-
-/** Reads one function parameter's declared access. */
-function paramAccess(typeNode: Parser.SyntaxNode): RawAccess[] {
-  const name = baseName(typeNode);
-  if (EXCLUDED_PARAMS.has(name)) return [];
-
-  if (STRUCTURAL_PARAMS.has(name)) {
-    return [{ state: STRUCTURAL_STATE_ID, category: 'synthetic', mode: 'structural', optional: false, scoped: false }];
-  }
-
-  const resourceMode = RESOURCE_PARAMS[name];
-  if (resourceMode !== undefined) {
-    const [arg] = typeArgs(typeNode);
-    if (!arg) return [];
-    return [{
-      state: renderType(arg),
-      category: 'resource',
-      mode: resourceMode,
-      optional: false,
-      scoped: wasScoped(arg),
-    }];
-  }
-
-  if (QUERY_PARAMS.has(name)) {
-    const [data] = typeArgs(typeNode);
-    if (!data) return [];
-    const out: RawAccess[] = [];
-    queryData(data, false, out);
-    return out;
-  }
-
-  return [];
-}
-
-function descend(node: Parser.SyntaxNode, visit: (n: Parser.SyntaxNode) => void): void {
-  visit(node);
-  for (const child of node.children) descend(child, visit);
-}
-
-/** Signature text without the body, for the detail tier. */
 function signatureOf(fn: Parser.SyntaxNode, text: string): string {
   const body = fn.childForFieldName('body');
   const end = body ? body.startIndex : fn.endIndex;
   return text.slice(fn.startIndex, end).trim().replace(/\s+/g, ' ');
 }
 
-interface Candidate {
-  name: string;
-  node: Parser.SyntaxNode;
+/** What a parameter list yields, independent of which function declared it. */
+interface DeclaredAccess {
   accesses: RawAccess[];
+  observes?: string;
 }
 
-/** Pass 2: every `fn` whose signature declares state access (§7). */
-function candidates(root: Parser.SyntaxNode): Candidate[] {
+interface Candidate extends DeclaredAccess {
+  name: string;
+  /** Full module path including enclosing `mod` blocks (§6.2). */
+  modPath: string;
+  node: Parser.SyntaxNode;
+}
+
+/** Reads declared access from a parameter list (`parameters` or `closure_parameters`). */
+function accessesFromParams(params: Parser.SyntaxNode, decls: Declarations): DeclaredAccess {
+  const accesses: RawAccess[] = [];
+  let observes: string | undefined;
+  for (const param of params.namedChildren) {
+    if (param.type !== 'parameter') continue;
+    const typeNode = param.childForFieldName('type');
+    if (!typeNode) continue;
+    const result = analyzeParam(typeNode, decls.systemParams);
+    accesses.push(...result.accesses);
+    if (result.observes !== undefined) observes = result.observes;
+  }
+  return observes === undefined ? { accesses } : { accesses, observes };
+}
+
+function modulePathOf(node: Parser.SyntaxNode, base: string): string {
+  const inner = enclosingModules(node);
+  return inner.length > 0 ? `${base}::${inner.join('::')}` : base;
+}
+
+/** Pass 2: every `fn` whose signature declares state access. */
+function collectCandidates(root: Parser.SyntaxNode, decls: Declarations, base: string): Candidate[] {
   const found: Candidate[] = [];
   descend(root, (node) => {
     if (node.type !== 'function_item') return;
     const name = node.childForFieldName('name')?.text;
     const params = node.childForFieldName('parameters');
     if (!name || !params) return;
-
-    const accesses: RawAccess[] = [];
-    for (const param of params.namedChildren) {
-      if (param.type !== 'parameter') continue;
-      const typeNode = param.childForFieldName('type');
-      if (typeNode) accesses.push(...paramAccess(typeNode));
-    }
-    if (accesses.length > 0) found.push({ name, node, accesses });
+    const result = accessesFromParams(params, decls);
+    if (result.accesses.length > 0) found.push({ name, modPath: modulePathOf(node, base), node, ...result });
   });
   return found;
 }
 
-export interface RegistrationSite {
-  systemName: string;
-  typeArgs: string[];
-  schedule: string;
-  modifiers: string[];
-}
-
 /**
- * Walks one member of a registration tuple. Modifier chains are descended to their
- * receiver; full propagation semantics (§7.6) land at Milestone 2.
+ * Resolves a registration reference to a candidate, innermost module first.
  *
- * Skips `ERROR` and `array_expression`, the deterministic artifacts left by an
- * unparseable `#[cfg(...)]` in expression position (M0 finding, §7.6).
+ * A registration inside `mod a` naming `setup` means `a::setup` when that exists, so
+ * resolution walks outward from the registration's own module before falling back to a
+ * corpus-unique bare name. Ambiguous bare names resolve to nothing rather than to an
+ * arbitrary match — a wrong binding corrupts §8, a missing one merely under-reports.
  */
-function systemTerms(node: Parser.SyntaxNode, modifiers: string[], out: RegistrationSite[], schedule: string): void {
-  switch (node.type) {
-    case 'ERROR':
-    case 'array_expression':
-      return;
-    case 'tuple_expression':
-      for (const child of node.namedChildren) systemTerms(child, modifiers, out, schedule);
-      return;
-    case 'identifier':
-      out.push({ systemName: node.text, typeArgs: [], schedule, modifiers: [...modifiers] });
-      return;
-    case 'scoped_identifier':
-      out.push({
-        systemName: node.childForFieldName('name')?.text ?? node.text,
-        typeArgs: [],
-        schedule,
-        modifiers: [...modifiers],
-      });
-      return;
-    case 'generic_function': {
-      const fn = node.childForFieldName('function');
-      const args = node.childForFieldName('type_arguments');
-      if (!fn) return;
-      out.push({
-        systemName: fn.type === 'scoped_identifier' ? (fn.childForFieldName('name')?.text ?? fn.text) : fn.text,
-        typeArgs: (args?.namedChildren ?? []).filter((c) => c.type !== 'lifetime').map(renderType),
-        schedule,
-        modifiers: [...modifiers],
-      });
-      return;
-    }
-    case 'call_expression': {
-      const fn = node.childForFieldName('function');
-      if (fn?.type === 'field_expression') {
-        const modifier = fn.childForFieldName('field')?.text;
-        const receiver = fn.childForFieldName('value');
-        if (receiver) systemTerms(receiver, modifier ? [...modifiers, modifier] : modifiers, out, schedule);
-      }
-      return;
-    }
-    default:
-      return;
+function resolveCandidate(
+  leafModPath: string,
+  name: string,
+  byQualified: ReadonlyMap<string, Candidate>,
+  byName: ReadonlyMap<string, Candidate[]>,
+): Candidate | undefined {
+  const segments = leafModPath.split('::');
+  for (let i = segments.length; i > 0; i--) {
+    const found = byQualified.get(`${segments.slice(0, i).join('::')}::${name}`);
+    if (found) return found;
   }
+  const sameName = byName.get(name);
+  return sameName?.length === 1 ? sameName[0] : undefined;
 }
 
-/** Pass 3: `add_systems(Schedule, systems)` sites. */
-export function registrationSites(root: Parser.SyntaxNode): RegistrationSite[] {
-  const sites: RegistrationSite[] = [];
-  descend(root, (node) => {
-    if (node.type !== 'call_expression') return;
-    const fn = node.childForFieldName('function');
-    if (fn?.type !== 'field_expression') return;
-    if (fn.childForFieldName('field')?.text !== 'add_systems') return;
-
-    const args = node.childForFieldName('arguments')?.namedChildren ?? [];
-    const [scheduleNode, ...systems] = args;
-    if (!scheduleNode) return;
-    const schedule = scheduleNode.text.replace(/\s+/g, '');
-    for (const term of systems) systemTerms(term, [], sites, schedule);
-  });
-  return sites;
+function registrationFrom(leaf: RegistrationLeaf): Registration {
+  return {
+    schedule: leaf.schedule,
+    before: leaf.modifiers.before,
+    after: leaf.modifiers.after,
+    inSets: leaf.modifiers.inSets,
+    chained: leaf.chained,
+    runConditions: leaf.modifiers.runConditions,
+    ...(leaf.modifiers.ambiguousWith ? { ambiguousWith: leaf.modifiers.ambiguousWith } : {}),
+  };
 }
 
-/** Does this file build an App? Used for the Milestone 1 appScope rule (§7.3). */
 function hasAppRoot(root: Parser.SyntaxNode): boolean {
   let found = false;
   descend(root, (node) => {
@@ -248,18 +147,30 @@ export const bevy019: Dialect = {
 
   extract(tree: Parser.Tree, file: SourceFile): DialectOutput {
     const root = tree.rootNode;
-    const sites = registrationSites(root);
-    const byName = new Map<string, RegistrationSite[]>();
-    for (const site of sites) {
-      const list = byName.get(site.systemName);
-      if (list) list.push(site);
-      else byName.set(site.systemName, [site]);
+    const decls = collectDeclarations(root);
+    const appScope = hasAppRoot(root) ? file.modulePath : 'unknown';
+
+    const candidates = collectCandidates(root, decls, file.modulePath);
+    const byQualified = new Map<string, Candidate>();
+    const byName = new Map<string, Candidate[]>();
+    for (const candidate of candidates) {
+      const key = `${candidate.modPath}::${candidate.name}`;
+      if (!byQualified.has(key)) byQualified.set(key, candidate);
+      const list = byName.get(candidate.name);
+      if (list) list.push(candidate);
+      else byName.set(candidate.name, [candidate]);
     }
 
-    // §7.3: a file that builds an App is its own scope. Files that register systems into
-    // someone else's App cannot be resolved until plugin resolution at M3, so they are
-    // marked unknown and excluded from ambiguity analysis rather than guessed into a scope.
-    const appScope = hasAppRoot(root) ? file.modulePath : 'unknown';
+    const leaves = [...collectRegistrations(root), ...collectObservers(root)];
+    const registrationsFor = new Map<Candidate, RegistrationLeaf[]>();
+    for (const leaf of leaves) {
+      if (leaf.systemName === null) continue;
+      const target = resolveCandidate(modulePathOf(leaf.node, file.modulePath), leaf.systemName, byQualified, byName);
+      if (!target) continue;
+      const list = registrationsFor.get(target);
+      if (list) list.push(leaf);
+      else registrationsFor.set(target, [leaf]);
+    }
 
     const executors: ExecutorNode[] = [];
     const accesses: Access[] = [];
@@ -272,72 +183,92 @@ export const bevy019: Dialect = {
       }
       const existing = states.get(raw.state);
       if (existing) {
-        // A component seen through a resource slot (or vice versa) would be a real
-        // conflict; first declaration wins and the discrepancy is left visible.
         if (raw.scoped) existing.ambiguousKey = true;
         return;
       }
+      // Usage position infers the category; a local `#[derive(..)]` is authoritative (§7.3).
+      const declared = decls.categories.get(raw.state);
       states.set(raw.state, {
         id: raw.state,
         display: raw.state,
-        category: raw.category,
+        category: declared ?? raw.category,
         ubiquitous: false,
         ...(raw.scoped ? { ambiguousKey: true } : {}),
       });
     };
 
-    for (const candidate of candidates(root)) {
-      const registrations = byName.get(candidate.name) ?? [];
+    const emit = (
+      id: string,
+      display: string,
+      kind: ExecutorNode['kind'],
+      node: Parser.SyntaxNode,
+      candidate: DeclaredAccess,
+      typeArgs: string[],
+      leaf: RegistrationLeaf | undefined,
+    ): void => {
+      executors.push({
+        id,
+        display,
+        kind,
+        ...(typeArgs.length > 0 ? { typeArgs } : {}),
+        appScope,
+        loc: loc(file, node),
+        ...(leaf ? { registration: registrationFrom(leaf) } : {}),
+        ...(candidate.observes !== undefined ? { observes: candidate.observes } : {}),
+        unregistered: leaf === undefined,
+        signature: signatureOf(node, file.text),
+      });
+      for (const raw of candidate.accesses) {
+        noteState(raw);
+        accesses.push({
+          executorId: id,
+          stateId: raw.state,
+          mode: raw.mode,
+          optional: raw.optional,
+          ...(raw.filters ? { filters: raw.filters } : {}),
+          ...(raw.viaParam !== undefined ? { viaParam: raw.viaParam } : {}),
+          loc: loc(file, node),
+        });
+      }
+    };
+
+    for (const candidate of candidates) {
+      const registrations = registrationsFor.get(candidate) ?? [];
+      const kind: ExecutorNode['kind'] =
+        candidate.observes !== undefined || registrations.some((r) => r.schedule === OBSERVER_SCHEDULE)
+          ? 'observer'
+          : 'system';
+
       // One executor per distinct instantiation; identity includes type args (§6.2).
-      const instantiations =
-        registrations.length > 0
-          ? registrations.map((r) => r.typeArgs)
-          : [[] as string[]];
+      const instantiations = registrations.length > 0 ? registrations.map((r) => r.typeArgs) : [[] as string[]];
       const seen = new Set<string>();
 
       for (const args of instantiations) {
         const suffix = args.length > 0 ? `::<${args.join(', ')}>` : '';
-        const id = `${file.modulePath}::${candidate.name}${suffix}`;
+        const id = `${candidate.modPath}::${candidate.name}${suffix}`;
         if (seen.has(id)) continue;
         seen.add(id);
-
-        const site = registrations.find((r) => r.typeArgs.join(',') === args.join(','));
-        executors.push({
-          id,
-          display: `${candidate.name}${suffix}`,
-          kind: 'system',
-          ...(args.length > 0 ? { typeArgs: args } : {}),
-          appScope,
-          loc: loc(file, candidate.node),
-          ...(site
-            ? {
-                registration: {
-                  schedule: site.schedule,
-                  before: [],
-                  after: [],
-                  inSets: [],
-                  chained: site.modifiers.includes('chain'),
-                  runConditions: site.modifiers.filter((m) => m === 'run_if'),
-                },
-              }
-            : {}),
-          unregistered: registrations.length === 0,
-          signature: signatureOf(candidate.node, file.text),
-        });
-
-        for (const raw of candidate.accesses) {
-          noteState(raw);
-          accesses.push({
-            executorId: id,
-            stateId: raw.state,
-            mode: raw.mode,
-            optional: raw.optional,
-            loc: loc(file, candidate.node),
-          });
-        }
+        const leaf = registrations.find((r) => r.typeArgs.join(',') === args.join(','));
+        emit(id, `${candidate.name}${suffix}`, kind, candidate.node, candidate, args, leaf);
       }
     }
 
-    return { executors, states: [...states.values()], accesses };
+    // Inline closure systems: registered by definition, and named by position (§7.6).
+    for (const leaf of leaves) {
+      if (!leaf.closure) continue;
+      const params = leaf.closure.childForFieldName('parameters');
+      if (!params) continue;
+      const result = accessesFromParams(params, decls);
+      if (result.accesses.length === 0) continue;
+      const label = leafLabel(leaf);
+      emit(`${modulePathOf(leaf.closure, file.modulePath)}::${label}`, label, 'closure', leaf.closure, result, [], leaf);
+    }
+
+    return {
+      executors,
+      states: [...states.values()],
+      accesses,
+      setOrderings: collectSetOrderings(root, appScope),
+    };
   },
 };
