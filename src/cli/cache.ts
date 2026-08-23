@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AtlasIR } from '../core/ir.ts';
@@ -62,6 +62,27 @@ export function readCachedIR(repoRoot: string, dialect: string, sha: string): At
 }
 
 export function writeCachedIR(repoRoot: string, dialect: string, sha: string, ir: AtlasIR): void {
-  mkdirSync(cacheDir(repoRoot), { recursive: true });
+  const dir = cacheDir(repoRoot);
+  mkdirSync(dir, { recursive: true });
   writeFileSync(cachePath(repoRoot, dialect, sha), JSON.stringify(ir));
+  pruneStale(dir);
+}
+
+/**
+ * Removes entries written by a different extractor version. Without this the cache grows
+ * without bound: every change to extraction logic orphans the whole previous generation.
+ */
+export function pruneStale(dir: string): number {
+  const keep = extractorFingerprint();
+  let removed = 0;
+  for (const entry of readdirSync(dir)) {
+    if (!entry.endsWith('.json') || entry.includes(keep)) continue;
+    try {
+      rmSync(join(dir, entry));
+      removed++;
+    } catch {
+      // A file we cannot remove is not worth failing an extraction over.
+    }
+  }
+  return removed;
 }

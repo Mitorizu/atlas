@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, watch } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -37,14 +37,15 @@ Options
   --json          print the delta as JSON (diff)
   -o <path>       artifact output path
   --port N        port for --view / serve (default: an unused one)
+  --watch         re-extract when files change (with --view)
 `;
 
-function flagValue(args: string[], name: string): string | undefined {
+export function flagValue(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-function positionals(args: string[]): string[] {
+export function positionals(args: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -55,6 +56,39 @@ function positionals(args: string[]): string[] {
     out.push(arg);
   }
   return out;
+}
+
+/**
+ * Re-extracts when Rust files change. Debounced, because an editor save and a formatter
+ * run land as several events within milliseconds and each rebuild walks the whole corpus.
+ */
+function watchRepo(root: string, rebuild: () => Promise<void>): void {
+  let timer: NodeJS.Timeout | null = null;
+  let running = false;
+
+  const trigger = (): void => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (running) return;
+      running = true;
+      const started = Date.now();
+      rebuild()
+        .then(() => console.log(`  rebuilt in ${Date.now() - started}ms`))
+        .catch((error: unknown) => console.error(`  rebuild failed: ${String(error)}`))
+        .finally(() => {
+          running = false;
+        });
+    }, 250);
+  };
+
+  try {
+    watch(root, { recursive: true }, (_event, filename) => {
+      if (filename && filename.toString().endsWith('.rs')) trigger();
+    });
+    console.log('  watching for .rs changes');
+  } catch {
+    console.error('  --watch unavailable on this platform; continuing without it');
+  }
 }
 
 async function serveArtifact(path: string, port: number | undefined): Promise<void> {
@@ -97,10 +131,20 @@ export async function run(): Promise<void> {
 
       const hops = flagValue(args, '--hops') ? Number(flagValue(args, '--hops')) : 2;
       const out = flagValue(args, '-o') ?? defaultOut('diff.json');
-      const artifact = await buildFocusArtifact(result, hops);
       mkdirSync(dirname(out), { recursive: true });
+
+      const rebuild = async (): Promise<void> => {
+        const fresh = runDiff(workdir, rest[0]);
+        const artifact = await buildFocusArtifact(fresh, hops);
+        writeFileSync(out, JSON.stringify(artifact) + '\n');
+        return;
+      };
+
+      const artifact = await buildFocusArtifact(result, hops);
       writeFileSync(out, JSON.stringify(artifact) + '\n');
       console.log(`  focus: ${artifact.layout.nodes.length} nodes within ${hops} hop(s) of the change`);
+
+      if (args.includes('--watch')) watchRepo(workdir, rebuild);
       await serveArtifact(out, port);
       return;
     }

@@ -239,3 +239,4 @@ header strong { letter-spacing: 0.02em; }
   background: transparent; color: var(--muted); padding: 2px 8px;
 }
 .tier-indicator button.active { background: var(--bg); color: var(--ink); }
+.state-screen .hint { margin: 4px 0 0; }

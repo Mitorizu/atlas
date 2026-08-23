@@ -12,10 +12,39 @@ export default function App() {
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('graph.json')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`graph.json: HTTP ${r.status}`))))
-      .then(setArtifact)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    let cancelled = false;
+    let known: number | null = null;
+
+    const load = (): void => {
+      fetch('graph.json', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`graph.json: HTTP ${r.status}`))))
+        .then((next) => {
+          if (!cancelled) setArtifact(next as Artifact);
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        });
+    };
+    load();
+
+    // Under `--watch` the CLI rewrites the artifact in place; poll its mtime so the view
+    // follows along. `/version` is absent when the artifact is served statically, in which
+    // case the interval quietly does nothing.
+    const poll = setInterval(() => {
+      fetch('version', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((info: { mtime?: number } | null) => {
+          if (cancelled || !info?.mtime) return;
+          if (known !== null && info.mtime !== known) load();
+          known = info.mtime;
+        })
+        .catch(() => undefined);
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
   }, []);
 
   const detail = useMemo(
@@ -27,8 +56,9 @@ export default function App() {
       <div className="state-screen">
         <h1>No graph</h1>
         <p>{error}</p>
-        <code>npm run diff -- --view</code>
-        <code>npm run extract -- &lt;path-to-rust&gt;</code>
+        <p className="hint">Produce one with:</p>
+        <code>atlas diff --view</code>
+        <code>atlas map &lt;path-to-rust&gt;</code>
       </div>
     );
   }

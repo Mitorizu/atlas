@@ -48,11 +48,27 @@ export async function serve(options: ServeOptions): Promise<RunningServer> {
       const url = new URL(request.url ?? '/', 'http://localhost');
       const pathname = decodeURIComponent(url.pathname);
 
+      // Lets the viewer poll for a rewritten artefact under `--watch` without refetching
+      // the whole graph.
+      if (pathname === '/version') {
+        try {
+          const info = await stat(artifactPath);
+          response
+            .writeHead(200, { 'content-type': CONTENT_TYPES['.json']!, 'cache-control': 'no-store' })
+            .end(JSON.stringify({ mtime: info.mtimeMs }));
+        } catch {
+          response.writeHead(404).end('{}');
+        }
+        return;
+      }
+
       // The artefact is served from wherever the caller put it, not from the bundle.
       if (pathname === '/graph.json') {
         try {
           const body = await readFile(artifactPath);
-          response.writeHead(200, { 'content-type': CONTENT_TYPES['.json']! }).end(body);
+          response
+            .writeHead(200, { 'content-type': CONTENT_TYPES['.json']!, 'cache-control': 'no-store' })
+            .end(body);
         } catch {
           response.writeHead(404).end('no artifact');
         }
