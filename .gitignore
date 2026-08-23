@@ -1,1 +1,6 @@
 DESIGN.md
+
+node_modules/
+*.log
+.cache/
+dist/

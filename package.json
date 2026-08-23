@@ -1,0 +1,27 @@
+{
+  "name": "atlas",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Code cartography: map who touches what state, and what a change did to it.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "grammar:report": "tsx scripts/grammar-report.ts"
+  },
+  "overrides": {
+    "tree-sitter": "0.25.1"
+  },
+  "dependencies": {
+    "tree-sitter": "0.25.1",
+    "tree-sitter-rust": "0.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.8",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}
