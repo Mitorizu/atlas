@@ -176,6 +176,22 @@ describe('M2: registration semantics (§7.6)', () => {
     assert.deepEqual(regOf(out, 'a').inSets, ['S']);
   });
 
+  test('a single system in parentheses is registered, not silently dropped', () => {
+    // `(a)` is a parenthesized_expression; only `(a,)` and `(a, b)` are tuples. A walker
+    // that handles only tuples loses the registration without any error (found at M6).
+    for (const form of ['(a)', '(a,)', '(a, b)', 'a']) {
+      const out = reg(form);
+      const registered = out.executors.filter((e) => !e.unregistered).map((e) => e.display).sort();
+      const expected = form.includes('b') ? ['a', 'b'] : ['a'];
+      assert.deepEqual(registered, expected, `form ${form}`);
+    }
+  });
+
+  test('chain() on a parenthesised single system is a no-op, not a crash', () => {
+    const out = reg('(a).chain()');
+    assert.deepEqual(out.executors.filter((e) => !e.unregistered).map((e) => e.display), ['a']);
+  });
+
   test('inline closures become closure executors', () => {
     const out = extract('fn main(){ App::new().add_systems(Update, |mut c: Commands| { c.spawn(X); }); }');
     const closure = out.executors[0]!;

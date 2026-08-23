@@ -17,7 +17,8 @@
     "corpus:stats": "tsx scripts/corpus-stats.ts",
     "oracle:build": "cargo build --offline --manifest-path harness/Cargo.toml",
     "oracle": "cargo run --offline --quiet --manifest-path harness/Cargo.toml",
-    "diff": "tsx src/cli/diff.ts"
+    "diff": "tsx src/cli/diff.ts",
+    "demo": "./demo/demo-diff.sh"
   },
   "overrides": {
     "tree-sitter": "0.25.1"

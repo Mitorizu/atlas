@@ -105,6 +105,11 @@ export function walkTerm(node: Parser.SyntaxNode, mods: Modifiers, schedule: str
     case 'tuple_expression':
       return node.namedChildren.flatMap((child) => walkTerm(child, mods, schedule));
 
+    // `(a)` is a parenthesised expression, not a one-element tuple — only `(a,)` is that.
+    // Without this the registration is silently dropped.
+    case 'parenthesized_expression':
+      return node.namedChildren.flatMap((child) => walkTerm(child, mods, schedule));
+
     case 'identifier':
       return [
         { systemName: node.text, qualified: node.text, typeArgs: [], schedule, modifiers: cloneModifiers(mods), chained: false, node },
@@ -154,6 +159,7 @@ export function walkTerm(node: Parser.SyntaxNode, mods: Modifiers, schedule: str
 
       if (CHAINING_MODIFIERS.has(modifier)) {
         // Orders immediate children only; each child's subtree as a unit.
+        if (receiver.type === 'parenthesized_expression') return walkTerm(receiver, mods, schedule);
         if (receiver.type !== 'tuple_expression') return walkTerm(receiver, mods, schedule);
         const groups = receiver.namedChildren.map((child) => walkTerm(child, mods, schedule)).filter((g) => g.length > 0);
         for (let i = 0; i < groups.length - 1; i++) {

@@ -1,5 +1,5 @@
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { isMain } from '../is-main.ts';
 import {
   GitError,
@@ -16,6 +16,9 @@ import { computeDelta, type GraphDelta } from '../core/delta.ts';
 import { readCachedIR, writeCachedIR } from './cache.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
 import type { AtlasIR } from '../core/ir.ts';
+import { buildFocus, type FocusResult } from '../core/focus.ts';
+import { buildGraph } from '../core/graph.ts';
+import { layout } from '../layout/elk.ts';
 
 export interface DiffResult {
   delta: GraphDelta;
@@ -23,6 +26,55 @@ export interface DiffResult {
   head: AtlasIR;
   changed: string[];
   baseFromCache: boolean;
+  repoRoot: string;
+}
+
+/**
+ * The artefact the viewer loads for a review (DESIGN.md §9.1). `mode` lets one viewer
+ * render either this or a whole-codebase map.
+ */
+export interface FocusArtifact {
+  meta: {
+    mode: 'focus';
+    dialect: string;
+    repoRoot: string;
+    base: string;
+    head: string;
+    changedFiles: string[];
+    hops: number;
+  };
+  focus: Omit<FocusResult, 'ir'>;
+  delta: GraphDelta;
+  ir: AtlasIR;
+  layout: Awaited<ReturnType<typeof layout>>;
+}
+
+/** Builds the focus subgraph and lays it out for the viewer. */
+export async function buildFocusArtifact(result: DiffResult, hops = 2): Promise<FocusArtifact> {
+  const focus = buildFocus(result.base, result.head, result.delta, { hops });
+  const { ir, ...rest } = focus;
+
+  // The state a review is ABOUT must stay visible even when it is a corpus-wide hub.
+  const keepHubs = new Set<string>();
+  for (const found of result.delta.ambiguities.introduced) keepHubs.add(found.stateId);
+  for (const id of rest.seeds) keepHubs.add(id);
+
+  const positioned = await layout(buildGraph(ir, { keepHubs }));
+  return {
+    meta: {
+      mode: 'focus',
+      dialect: ir.dialect,
+      repoRoot: result.repoRoot,
+      base: result.delta.base.rev,
+      head: result.delta.head.rev,
+      changedFiles: result.changed,
+      hops,
+    },
+    focus: rest,
+    delta: result.delta,
+    ir,
+    layout: positioned,
+  };
 }
 
 /** Reads a whole tree at a revision through git plumbing; never touches the working tree. */
@@ -77,6 +129,7 @@ export function runDiff(dir: string, revArg: string | undefined, useCache = true
     head,
     changed: changedFiles(root, baseSha, headRef === null ? null : resolveRev(root, headRef)),
     baseFromCache: cached,
+    repoRoot: root,
   };
 }
 
@@ -118,14 +171,37 @@ export function formatDelta(result: DiffResult): string[] {
   return lines;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const jsonFlag = args.includes('--json');
-  const positional = args.filter((a) => !a.startsWith('-'));
+  const viewFlag = args.includes('--view');
+  const hopsArg = args.indexOf('--hops');
+  const hops = hopsArg >= 0 ? Number(args[hopsArg + 1] ?? 2) : 2;
+  const outArg = args.indexOf('-o');
+  const out = outArg >= 0 ? args[outArg + 1] : 'src/web/public/graph.json';
+  const positional = args.filter(
+    (a, i) => !a.startsWith('-') && i !== outArg + 1 && i !== hopsArg + 1,
+  );
   const dir = process.env['ATLAS_DIR'] ?? process.cwd();
 
   try {
     const result = runDiff(dir, positional[0]);
+
+    if (viewFlag) {
+      if (!out) throw new Error('-o requires a path');
+      const artifact = await buildFocusArtifact(result, hops);
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, JSON.stringify(artifact, null, 2) + '\n');
+      for (const line of formatDelta(result)) console.log(line);
+      const nodes = artifact.layout.nodes.length;
+      console.log(
+        `  focus: ${nodes} nodes within ${hops} hop(s) of the change ` +
+          `(of ${artifact.focus.totalExecutors} executors) -> ${out}`,
+      );
+      console.log('  view with: npm run dev');
+      return;
+    }
+
     if (jsonFlag) console.log(JSON.stringify(result.delta, null, 2));
     else for (const line of formatDelta(result)) console.log(line);
   } catch (error) {
@@ -134,4 +210,9 @@ function main(): void {
   }
 }
 
-if (isMain(import.meta.filename)) main();
+if (isMain(import.meta.filename)) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

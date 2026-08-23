@@ -54,10 +54,14 @@ git -C "$DEMO" --no-pager diff -- 2d/move_sprite.rs | sed 's/^/    /'
 
 echo
 echo "==> what atlas sees"
-(cd "$ATLAS" && ATLAS_DIR="$DEMO" npx tsx src/cli/diff.ts | sed 's/^/    /')
+(cd "$ATLAS" && ATLAS_DIR="$DEMO" npx tsx src/cli/diff.ts --view | sed 's/^/    /')
 
 echo
 echo "The added system and sprite_movement both write Transform in Update with nothing"
 echo "ordering them. Bevy will run them in either order, and the diff gives no hint."
 echo
-echo "Re-run to see the cached base (roughly 2x faster). Demo repo: $DEMO"
+echo "A focus artefact was written. To open the review view:"
+echo
+echo "    npm run dev      then visit http://localhost:5173/"
+echo
+echo "Re-run to exercise the cached base (roughly 2x faster). Demo repo: $DEMO"

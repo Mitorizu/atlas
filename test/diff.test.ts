@@ -8,7 +8,8 @@ import { parseRevSpec, readBlobsAtRev, rustFilesAtRev, resolveRev } from '../src
 import { extractSources, modulePathFromRepoPath } from '../src/core/pipeline.ts';
 import { computeDelta, pairMoves } from '../src/core/delta.ts';
 import { runDiff } from '../src/cli/diff.ts';
-import { cacheDir } from '../src/cli/cache.ts';
+import { cacheDir, extractorFingerprint } from '../src/cli/cache.ts';
+import { readdirSync, renameSync } from 'node:fs';
 
 const repos: string[] = [];
 after(() => {
@@ -225,6 +226,22 @@ describe('M5: end to end', () => {
       first.delta.ambiguities.introduced.map((a) => a.stateId),
       'a cached base must give the same answer as a fresh one',
     );
+  });
+
+  test('a cache entry from a different extractor version is not reused', () => {
+    // A commit's tree is immutable but the IR derived from it is not: if the extractor
+    // changes, a cached base produces findings that do not exist (found at M6).
+    const dir = makeRepo({ 'src/game.rs': ORDERED });
+    write(dir, { 'src/game.rs': UNORDERED });
+    runDiff(dir, undefined, true);
+
+    const entries = readdirSync(cacheDir(dir));
+    assert.equal(entries.length, 1);
+    assert.match(entries[0]!, new RegExp(extractorFingerprint()), 'key carries the extractor fingerprint');
+
+    // Simulate an extractor change by relabelling the entry with a different fingerprint.
+    renameSync(join(cacheDir(dir), entries[0]!), join(cacheDir(dir), entries[0]!.replace(extractorFingerprint(), 'deadbeef0000')));
+    assert.equal(runDiff(dir, undefined, true).baseFromCache, false, 'must re-extract, not reuse');
   });
 
   test('comparing two committed revisions works too', () => {

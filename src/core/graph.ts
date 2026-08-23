@@ -52,12 +52,21 @@ export interface BuildOptions {
    * weld unrelated apps into one component and make the layout unusable (§7.4).
    */
   materialiseHubs?: boolean;
+  /**
+   * Hubs to draw as nodes regardless. A focus view must materialise the state a review is
+   * ABOUT: `Transform` is ubiquitous corpus-wide, so demoting it would hide the very node
+   * an introduced conflict is reported on.
+   */
+  keepHubs?: ReadonlySet<string>;
 }
 
 export function buildGraph(ir: AtlasIR, options: BuildOptions = {}): Graph {
   const nodes: GraphNode[] = [];
+  const keep = options.keepHubs ?? new Set<string>();
   const hubs = new Map(
-    options.materialiseHubs === true ? [] : ir.states.filter((s) => s.ubiquitous).map((s) => [s.id, s] as const),
+    options.materialiseHubs === true
+      ? []
+      : ir.states.filter((s) => s.ubiquitous && !keep.has(s.id)).map((s) => [s.id, s] as const),
   );
 
   const badgesFor = new Map<string, GraphNode['badges']>();

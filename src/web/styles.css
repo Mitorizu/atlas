@@ -112,3 +112,98 @@ header strong { letter-spacing: 0.02em; }
   white-space: nowrap;
 }
 .node .badge.read { border-style: dashed; }
+
+/* ---- focus view: diff encoding (§9.1, §9.3) ------------------------------
+   Role is carried by form and opacity, not hue: hue already encodes state
+   category, and the two must not compete. */
+.canvas { position: relative; flex: 1; display: flex; min-height: 0; }
+.canvas .react-flow { flex: 1; }
+
+.node.role-added { border-style: solid; box-shadow: inset 3px 0 0 var(--added); }
+.node.role-modified { box-shadow: inset 3px 0 0 var(--modified); }
+.node.role-moved { box-shadow: inset 3px 0 0 var(--muted); }
+.node.role-removed { opacity: 0.45; border-style: dashed; text-decoration: line-through; }
+.node.role-context { opacity: 0.72; }
+.node.conflicted { outline: 2px solid var(--alarm); outline-offset: 2px; }
+
+:root { --added: #1f7a4d; --modified: #8a6d1f; --alarm: #b3355e; --ok: #1f7a4d; }
+@media (prefers-color-scheme: dark) {
+  :root { --added: #4bbf85; --modified: #d3a53f; --alarm: #ef6d95; --ok: #4bbf85; }
+}
+.crumb.alarm { color: var(--alarm); font-weight: 600; }
+.crumb.ok { color: var(--ok); }
+.legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; border: 1px solid var(--line); }
+.legend .swatch.added { box-shadow: inset 3px 0 0 var(--added); }
+.legend .swatch.modified { box-shadow: inset 3px 0 0 var(--modified); }
+.legend .swatch.removed { opacity: 0.45; border-style: dashed; }
+.legend .swatch.context { opacity: 0.72; }
+
+.banner {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 7px 14px; background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.banner button {
+  font: inherit; font-size: 12px; cursor: pointer;
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--alarm); border-radius: 5px; padding: 3px 9px;
+}
+.banner button:hover { background: color-mix(in srgb, var(--alarm) 12%, transparent); }
+.banner code { font-family: ui-monospace, Menlo, monospace; }
+.banner .sched { color: var(--muted); }
+.banner .more { color: var(--muted); font-size: 12px; }
+
+/* ---- inspector ---------------------------------------------------------- */
+.inspector {
+  width: 340px; flex: none; overflow-y: auto;
+  background: var(--panel); border-left: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.inspector header {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.inspector header strong { flex: 1; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+.inspector header button {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.inspector .role {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--muted);
+}
+.inspector .role.added { color: var(--added); border-color: var(--added); }
+.inspector .role.modified { color: var(--modified); border-color: var(--modified); }
+.inspector .role.removed { text-decoration: line-through; }
+.inspector .body { padding: 4px 12px 20px; }
+.inspector section { margin: 12px 0; }
+.inspector h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); margin: 0 0 6px; font-weight: 600;
+}
+.inspector h3 .count { opacity: 0.7; }
+.inspector dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.inspector dt { color: var(--muted); }
+.inspector dd { margin: 0; word-break: break-word; }
+.inspector .signature {
+  margin: 8px 0 0; padding: 7px 9px; white-space: pre-wrap; word-break: break-word;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+}
+.inspector .conflict {
+  border: 1px solid var(--alarm); border-radius: 6px; padding: 8px 10px;
+}
+.inspector .conflict h3 { color: var(--alarm); }
+.inspector .conflict p { margin: 0; }
+.inspector .neighbours { list-style: none; margin: 0; padding: 0; }
+.inspector .neighbours li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.inspector .neighbours button {
+  flex: 1; text-align: left; background: transparent; border: none; cursor: pointer;
+  color: var(--ink); font: inherit; font-family: ui-monospace, Menlo, monospace;
+  padding: 1px 0; text-decoration: underline; text-decoration-color: var(--line);
+}
+.inspector .neighbours button:hover { text-decoration-color: var(--ink); }
+.inspector .mode { font-size: 10px; color: var(--muted); }
+.inspector .mode.readwrite, .inspector .mode.write { color: var(--alarm); }
+.inspector .source { color: var(--ink); font-family: ui-monospace, Menlo, monospace; }

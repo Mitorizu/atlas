@@ -44,6 +44,7 @@ export const REQUIRED_NODES: Readonly<Record<string, readonly string[]>> = {
   field_identifier: [],
   arguments: [],
   tuple_expression: [],
+  parenthesized_expression: [],
   identifier: [],
   scoped_identifier: ['path', 'name'],
   generic_function: ['function', 'type_arguments'],
