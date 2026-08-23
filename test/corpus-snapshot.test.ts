@@ -76,7 +76,7 @@ describe('M2: corpus snapshot — examples/', () => {
     // Examples are self-contained apps, so scope resolution should mostly succeed here;
     // it is the engine crates (libraries, no App::new) that need pass 4.
     const { ir } = load();
-    const unknown = ir.executors.filter((e) => e.appScope === 'unknown').length;
+    const unknown = ir.executors.filter((e) => e.appScopes.length === 0).length;
     assert.ok(unknown / ir.executors.length < 0.2, `${unknown} executors lack scope in a self-contained corpus`);
   });
 });

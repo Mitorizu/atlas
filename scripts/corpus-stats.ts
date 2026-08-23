@@ -6,25 +6,26 @@ import { isMain } from '../src/is-main.ts';
 import { readFileSync, statSync } from 'node:fs';
 import { createRustParser } from '../src/parser.ts';
 import { bevy019 } from '../src/dialects/bevy-0.19/index.ts';
-import { mergeOutputs } from '../src/core/build.ts';
 import { rustFiles, modulePathFor } from '../src/cli/extract.ts';
-import type { DialectOutput, SourceFile } from '../src/dialects/types.ts';
+import type { Coverage, SourceFile } from '../src/dialects/types.ts';
+import type { FileFacts } from '../src/dialects/bevy-0.19/index.ts';
 import type { AtlasIR } from '../src/core/ir.ts';
 
-export function extractIR(root: string): { ir: AtlasIR; files: number; parseErrors: number } {
+export function extractIR(root: string): { ir: AtlasIR; files: number; parseErrors: number; coverage: Coverage } {
   const parser = createRustParser();
   const rootIsFile = statSync(root).isFile();
   const files = rustFiles(root);
-  const outputs: DialectOutput[] = [];
+  const facts: FileFacts[] = [];
   let parseErrors = 0;
   for (const path of files) {
     const text = readFileSync(path, 'utf8');
     const file: SourceFile = { path, modulePath: modulePathFor(root, path, rootIsFile), text };
     const tree = parser.parse(text);
     if (tree.rootNode.hasError) parseErrors++;
-    outputs.push(bevy019.extract(tree, file));
+    facts.push(bevy019.scan(tree, file));
   }
-  return { ir: mergeOutputs(bevy019.id, outputs), files: files.length, parseErrors };
+  const { output, coverage } = bevy019.link(facts);
+  return { ir: { dialect: bevy019.id, ...output }, files: files.length, parseErrors, coverage };
 }
 
 export function summarise(ir: AtlasIR) {
@@ -53,6 +54,8 @@ export function summarise(ir: AtlasIR) {
     viaSystemParam: ir.accesses.filter((a) => a.viaParam !== undefined).length,
     optional: ir.accesses.filter((a) => a.optional).length,
     setOrderings: ir.setOrderings.length,
+    ubiquitous: ir.states.filter((s) => s.ubiquitous).length,
+    scopeResolved: ir.executors.filter((e) => e.appScopes.length > 0).length,
     ordered: ir.executors.filter((e) => (e.registration?.before.length ?? 0) + (e.registration?.after.length ?? 0) > 0).length,
     runConditions: ir.executors.filter((e) => (e.registration?.runConditions.length ?? 0) > 0).length,
     inSets: ir.executors.filter((e) => (e.registration?.inSets.length ?? 0) > 0).length,

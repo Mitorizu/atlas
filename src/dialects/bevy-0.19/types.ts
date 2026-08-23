@@ -8,7 +8,9 @@ export function renderType(node: Parser.SyntaxNode): string {
     case 'primitive_type':
       return node.text;
     case 'scoped_type_identifier':
-      return node.childForFieldName('name')?.text ?? node.text;
+      // Keep the path as written. Merging `bevy_asset::Assets` with a bare `Assets` is a
+      // corpus-level decision made in link(), not a truncation done here (§6.2).
+      return node.text.replace(/\s+/g, '');
     case 'generic_type': {
       const base = node.childForFieldName('type');
       const args = node.childForFieldName('type_arguments');

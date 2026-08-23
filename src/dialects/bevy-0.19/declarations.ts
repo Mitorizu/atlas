@@ -1,6 +1,7 @@
 import type Parser from 'tree-sitter';
 import type { StateCategory } from '../../core/ir.ts';
 import { DERIVE_CATEGORY } from './vocabulary.ts';
+import { baseName } from './types.ts';
 
 export interface Declarations {
   /** Type name -> category, from `#[derive(Component)]` and friends (§7.3). */
@@ -92,9 +93,12 @@ export function collectDeclarations(root: Parser.SyntaxNode): Declarations {
 
     if (node.type === 'impl_item') {
       const traitName = node.childForFieldName('trait')?.text;
-      const typeName = node.childForFieldName('type')?.text;
+      const typeNode = node.childForFieldName('type');
       const body = node.childForFieldName('body');
-      if (traitName === 'Plugin' && typeName && body) plugins.set(typeName, body);
+      // Generic plugins (`impl<S> Plugin for StatePlugin<S>`) must key on the base name.
+      if ((traitName === 'Plugin' || traitName === 'PluginGroup') && typeNode && body) {
+        plugins.set(baseName(typeNode), body);
+      }
     }
   });
 

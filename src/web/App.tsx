@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ReactFlow, Background, Controls, MarkerType, type Edge, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { nodeTypes, type DataNodeData, type SystemData } from './nodes.tsx';
+import { nodeTypes, type Badge, type DataNodeData, type SystemData } from './nodes.tsx';
 import { edgeStyle, EDGE_COLOR } from './theme.ts';
 import './styles.css';
 
@@ -11,7 +11,7 @@ interface Artifact {
     nodes: Array<{
       id: string; kind: 'executor' | 'state'; label: string; x: number; y: number;
       width: number; height: number; category?: string; schedule?: string;
-      unregistered?: boolean; ubiquitous?: boolean;
+      unregistered?: boolean; ubiquitous?: boolean; badges?: Badge[];
     }>;
     edges: Array<{ id: string; source: string; target: string; mode: string; doubleHeaded: boolean }>;
   };
@@ -24,7 +24,7 @@ function toFlow(artifact: Artifact): { nodes: Node[]; edges: Edge[] } {
           id: n.id,
           type: 'system',
           position: { x: n.x, y: n.y },
-          data: { label: n.label, schedule: n.schedule, unregistered: n.unregistered } satisfies SystemData,
+          data: { label: n.label, schedule: n.schedule, unregistered: n.unregistered, badges: n.badges } satisfies SystemData,
         }
       : {
           id: n.id,

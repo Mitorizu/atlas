@@ -30,22 +30,22 @@ for (const n of graph.nodes) {
 console.log(`connected components: ${components}, largest: ${largest}`);
 
 const configs: Record<string, Record<string, string>> = {
-  'NETWORK_SIMPLEX (current)': { 'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX' },
-  BRANDES_KOEPF: { 'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF' },
-  SIMPLE: { 'elk.layered.nodePlacement.strategy': 'SIMPLE' },
-  'BRANDES_KOEPF + no hierarchy': { 'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', hierarchy: 'off' },
+  'stacked (current)': {},
+  'NETWORK_SIMPLEX placement': { 'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX' },
+  'packed aspectRatio 1.6': { 'elk.aspectRatio': '1.6' },
+  'packed + separateComponents': { 'elk.aspectRatio': '1.6', 'elk.separateConnectedComponents': 'true' },
 };
 
 for (const [label, opts] of Object.entries(configs)) {
   const layoutOptions: Record<string, string> = {
     'elk.algorithm': 'layered',
     'elk.direction': 'RIGHT',
+    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
     'elk.layered.spacing.nodeNodeBetweenLayers': '90',
     'elk.spacing.nodeNode': '28',
-    ...(opts['hierarchy'] === 'off' ? {} : { 'elk.hierarchyHandling': 'INCLUDE_CHILDREN' }),
+    ...opts,
   };
-  const strategy = opts['elk.layered.nodePlacement.strategy'];
-  if (strategy) layoutOptions['elk.layered.nodePlacement.strategy'] = strategy;
 
   const request: ElkNode = {
     id: 'root',

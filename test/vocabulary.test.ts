@@ -1,13 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRustParser } from '../src/parser.ts';
-import { bevy019 } from '../src/dialects/bevy-0.19/index.ts';
-import type { DialectOutput, SourceFile } from '../src/dialects/types.ts';
-
-function extract(src: string): DialectOutput {
-  const file: SourceFile = { path: 'x.rs', modulePath: 'x', text: src };
-  return bevy019.extract(createRustParser().parse(src), file);
-}
+import type { DialectOutput } from '../src/dialects/types.ts';
+import { extractSource as extract } from './helpers.ts';
 /** Wraps a system in a minimal app so it registers. */
 const app = (systems: string, defs: string): string =>
   `fn main(){ App::new().add_systems(Update, ${systems}); } ${defs}`;

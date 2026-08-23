@@ -1,5 +1,4 @@
 import type Parser from 'tree-sitter';
-import type { SetOrdering } from '../../core/ir.ts';
 import { renderType } from './types.ts';
 import { CHAINING_MODIFIERS, DISTRIBUTING_MODIFIERS } from './vocabulary.ts';
 import { descend } from './declarations.ts';
@@ -185,7 +184,7 @@ export function walkTerm(node: Parser.SyntaxNode, mods: Modifiers, schedule: str
   }
 }
 
-function methodCalls(root: Parser.SyntaxNode, method: string): Parser.SyntaxNode[] {
+export function methodCalls(root: Parser.SyntaxNode, method: string): Parser.SyntaxNode[] {
   const out: Parser.SyntaxNode[] = [];
   descend(root, (node) => {
     if (node.type !== 'call_expression') return;
@@ -222,38 +221,4 @@ export function collectObservers(root: Parser.SyntaxNode): RegistrationLeaf[] {
     }
   }
   return leaves;
-}
-
-/**
- * Pass 3: `configure_sets(Schedule, ..)` — ordering declared between SETS (§7.6).
- *
- * Reuses the same term walker: set names arrive as leaves and their accumulated
- * before/after modifiers become SetOrdering edges. `A.before(B)` means A precedes B;
- * `A.after(B)` means B precedes A; `(A, B).chain()` means A precedes B.
- */
-export function collectSetOrderings(root: Parser.SyntaxNode, appScope: string): SetOrdering[] {
-  const orderings: SetOrdering[] = [];
-  const seen = new Set<string>();
-
-  const add = (before: string, after: string, schedule: string): void => {
-    const key = `${schedule}|${before}|${after}`;
-    if (before === after || seen.has(key)) return;
-    seen.add(key);
-    orderings.push({ before, after, schedule, appScope });
-  };
-
-  for (const call of methodCalls(root, 'configure_sets')) {
-    const args = call.childForFieldName('arguments')?.namedChildren ?? [];
-    const [scheduleNode, ...terms] = args;
-    if (!scheduleNode) continue;
-    const schedule = scheduleNode.text.replace(/\s+/g, '');
-    for (const term of terms) {
-      for (const leaf of walkTerm(term, emptyModifiers(), schedule)) {
-        const self = leafLabel(leaf);
-        for (const target of leaf.modifiers.before) add(self, target, schedule);
-        for (const target of leaf.modifiers.after) add(target, self, schedule);
-      }
-    }
-  }
-  return orderings;
 }

@@ -2,18 +2,14 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createRustParser } from '../src/parser.ts';
-import { bevy019 } from '../src/dialects/bevy-0.19/index.ts';
-import type { SourceFile } from '../src/dialects/types.ts';
 import { findBevyExamples } from './corpus.ts';
+import { extractSource } from './helpers.ts';
 
 const dir = findBevyExamples();
 const skip = dir ? false : 'bevy 0.19 corpus not in cargo cache';
 
 function extract(path: string, modulePath: string) {
-  const text = readFileSync(path, 'utf8');
-  const file: SourceFile = { path, modulePath, text };
-  return bevy019.extract(createRustParser().parse(text), file);
+  return extractSource(readFileSync(path, 'utf8'), modulePath);
 }
 
 describe('M1: vertical slice on 2d/move_sprite.rs (DESIGN.md §10.1)', () => {
@@ -28,7 +24,7 @@ describe('M1: vertical slice on 2d/move_sprite.rs (DESIGN.md §10.1)', () => {
     assert.equal(executors['setup']?.registration?.schedule, 'Startup');
     assert.equal(executors['sprite_movement']?.registration?.schedule, 'Update');
     assert.equal(executors['setup']?.unregistered, false);
-    assert.equal(executors['setup']?.appScope, '2d::move_sprite');
+    assert.deepEqual(executors['setup']?.appScopes, ['2d::move_sprite']);
 
     const table = out.accesses
       .map((a) => `${out.executors.find((e) => e.id === a.executorId)!.display} ${a.mode} ${a.stateId}`)
@@ -56,10 +52,7 @@ describe('M1: vertical slice on 2d/move_sprite.rs (DESIGN.md §10.1)', () => {
 });
 
 describe('M1: extractor rules', () => {
-  const parse = (src: string) => {
-    const file: SourceFile = { path: 'x.rs', modulePath: 'x', text: src };
-    return bevy019.extract(createRustParser().parse(src), file);
-  };
+  const parse = (src: string) => extractSource(src);
 
   test('&T reads, &mut T reads AND writes (§7.5)', () => {
     const out = parse('fn main(){App::new().add_systems(Update, s);} fn s(q: Query<(&A, &mut B)>) {}');
@@ -97,7 +90,7 @@ describe('M1: extractor rules', () => {
     const out = parse('fn helper(q: Query<&A>) {}');
     assert.equal(out.executors.length, 1);
     assert.equal(out.executors[0]!.unregistered, true);
-    assert.equal(out.executors[0]!.appScope, 'unknown');
+    assert.deepEqual(out.executors[0]!.appScopes, ['<repo>'], 'no App::new anywhere -> whole-repo fallback');
   });
 
   test('cfg artifacts in a registration tuple are skipped (M0 finding, §7.6)', () => {

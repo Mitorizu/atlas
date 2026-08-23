@@ -7,9 +7,11 @@ export interface GraphNode {
   /** For state nodes: component | resource | message | event | synthetic. */
   category?: string;
   schedule?: string;
-  appScope?: string;
+  appScopes?: string[];
   unregistered?: boolean;
   ubiquitous?: boolean;
+  /** For executors: ubiquitous state shown as a badge instead of an edge (§7.4). */
+  badges?: Array<{ id: string; label: string; category: string; mode: string }>;
   width: number;
   height: number;
 }
@@ -44,21 +46,49 @@ function sizeFor(label: string, kind: 'executor' | 'state'): { width: number; he
  * Reads point Data -> System; writes point System -> Data; `readwrite` is a single
  * System -> Data edge drawn with two arrowheads rather than two opposing edges.
  */
-export function buildGraph(ir: AtlasIR): Graph {
+export interface BuildOptions {
+  /**
+   * Draw ubiquitous state as nodes anyway. Off by default: at corpus scale those hubs
+   * weld unrelated apps into one component and make the layout unusable (§7.4).
+   */
+  materialiseHubs?: boolean;
+}
+
+export function buildGraph(ir: AtlasIR, options: BuildOptions = {}): Graph {
   const nodes: GraphNode[] = [];
+  const hubs = new Map(
+    options.materialiseHubs === true ? [] : ir.states.filter((s) => s.ubiquitous).map((s) => [s.id, s] as const),
+  );
+
+  const badgesFor = new Map<string, GraphNode['badges']>();
+  for (const a of ir.accesses) {
+    const hub = hubs.get(a.stateId);
+    if (!hub) continue;
+    const list = badgesFor.get(a.executorId) ?? [];
+    if (!list.some((b) => b.id === hub.id)) {
+      list.push({ id: hub.id, label: hub.display, category: hub.category, mode: a.mode });
+    }
+    badgesFor.set(a.executorId, list);
+  }
 
   for (const e of ir.executors) {
+    const badges = badgesFor.get(e.id);
+    const badgeWidth = (badges ?? []).reduce((w, b) => w + b.label.length * 6 + 18, 0);
+    const size = sizeFor(e.display, 'executor');
     nodes.push({
       id: e.id,
       kind: 'executor',
       label: e.display,
       ...(e.registration ? { schedule: e.registration.schedule } : {}),
-      appScope: e.appScope,
+      appScopes: e.appScopes,
       unregistered: e.unregistered,
-      ...sizeFor(e.display, 'executor'),
+      ...(badges && badges.length > 0 ? { badges } : {}),
+      ...size,
+      width: size.width + badgeWidth,
     });
   }
   for (const s of ir.states) {
+    if (hubs.has(s.id)) continue;
     nodes.push({
       id: s.id,
       kind: 'state',

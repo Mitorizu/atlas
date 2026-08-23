@@ -99,3 +99,16 @@ header strong { letter-spacing: 0.02em; }
   font-size: 10px;
 }
 .react-flow__attribution a { color: var(--muted); }
+
+/* Ubiquitous state demoted to an inline badge (§7.4). */
+.node .badge {
+  font-size: 10.5px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.node .badge.read { border-style: dashed; }

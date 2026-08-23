@@ -69,7 +69,12 @@ export interface ExecutorNode {
   typeArgs?: string[];
   /** Type arguments are themselves generic params (`::<S>`) — excluded from §8. */
   genericUnresolved?: boolean;
-  appScope: string;
+  /**
+   * Apps this executor is registered into (§7.3). Usually one, but a system registered by
+   * a plugin that several binaries add belongs to all of them. Empty means unresolved:
+   * such executors are excluded from ambiguity analysis rather than guessed into a scope.
+   */
+  appScopes: string[];
   loc: SourceLoc;
   registration?: Registration;
   /** For `kind: 'observer'` — the `On<E>` type. */
@@ -99,7 +104,7 @@ export interface SetOrdering {
   before: string;
   after: string;
   schedule: string;
-  appScope: string;
+  appScopes: string[];
 }
 
 export interface AtlasIR {

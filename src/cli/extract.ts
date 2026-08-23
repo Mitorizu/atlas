@@ -3,11 +3,11 @@ import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'n
 import { join, relative, resolve, sep } from 'node:path';
 import { createRustParser } from '../parser.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
-import { mergeOutputs } from '../core/build.ts';
 import { buildGraph } from '../core/graph.ts';
 import { layout, type LayoutedGraph } from '../layout/elk.ts';
 import type { AtlasIR } from '../core/ir.ts';
-import type { DialectOutput, SourceFile } from '../dialects/types.ts';
+import type { Coverage, SourceFile } from '../dialects/types.ts';
+import type { FileFacts } from '../dialects/bevy-0.19/index.ts';
 
 const SKIP_DIRS = new Set(['target', '.git', 'node_modules', '.cache', 'dist']);
 
@@ -20,6 +20,7 @@ export interface Artifact {
     /** Files the grammar could not fully parse; recovery is local (§7.6). */
     filesWithParseErrors: number;
   };
+  coverage: Coverage;
   ir: AtlasIR;
   layout: LayoutedGraph;
 }
@@ -53,7 +54,7 @@ export async function extractCorpus(root: string): Promise<Artifact> {
   const parser = createRustParser();
   const rootIsFile = statSync(root).isFile();
   const files = rustFiles(root);
-  const outputs: DialectOutput[] = [];
+  const facts: FileFacts[] = [];
   let filesWithParseErrors = 0;
 
   for (const path of files) {
@@ -62,10 +63,11 @@ export async function extractCorpus(root: string): Promise<Artifact> {
     if (!bevy019.matches(file)) continue;
     const tree = parser.parse(text);
     if (tree.rootNode.hasError) filesWithParseErrors++;
-    outputs.push(bevy019.extract(tree, file));
+    facts.push(bevy019.scan(tree, file));
   }
 
-  const ir = mergeOutputs(bevy019.id, outputs);
+  const { output, coverage } = bevy019.link(facts);
+  const ir: AtlasIR = { dialect: bevy019.id, ...output };
   const positioned = await layout(buildGraph(ir));
 
   return {
@@ -76,6 +78,7 @@ export async function extractCorpus(root: string): Promise<Artifact> {
       files: files.length,
       filesWithParseErrors,
     },
+    coverage,
     ir,
     layout: positioned,
   };
@@ -97,9 +100,23 @@ async function main(): Promise<void> {
   mkdirSync(join(out, '..'), { recursive: true });
   writeFileSync(out, JSON.stringify(artifact, null, 2) + '\n');
 
-  const { ir, meta } = artifact;
+  const { ir, meta, coverage } = artifact;
   console.log(`dialect ${meta.dialect}  ${meta.files} file(s), ${meta.filesWithParseErrors} with parse errors`);
   console.log(`  executors ${ir.executors.length}  states ${ir.states.length}  accesses ${ir.accesses.length}`);
+  console.log(
+    `  scope: ${coverage.scopeResolved}/${coverage.executors} resolved` +
+      (coverage.wholeRepoFallback ? ' (whole-repo fallback: no App::new found)' : '') +
+      `  |  registrations ${coverage.registrationsResolved}/${coverage.registrations}` +
+      `  |  plugins ${coverage.pluginsReachable}/${coverage.plugins} reachable`,
+  );
+  const hubs = ir.states.filter((s) => s.ubiquitous);
+  if (hubs.length > 0) {
+    console.log(`  ubiquitous state demoted to badges: ${hubs.map((h) => h.display).slice(0, 8).join(', ')}` +
+      (hubs.length > 8 ? ` +${hubs.length - 8} more` : ''));
+  }
+  if (coverage.unresolvedSamples.length > 0) {
+    console.log(`  unresolved registrations e.g. ${coverage.unresolvedSamples.slice(0, 3).join(', ')}`);
+  }
   console.log(`  layout ${Math.round(artifact.layout.width)}x${Math.round(artifact.layout.height)} -> ${out}`);
 }
 

@@ -13,7 +13,7 @@ const skip = dir ? false : 'bevy 0.19 corpus not in cargo cache';
 const ir: AtlasIR = {
   dialect: 'test',
   executors: [
-    { id: 'm::s', display: 's', kind: 'system', appScope: 'm', unregistered: false, signature: 'fn s()',
+    { id: 'm::s', display: 's', kind: 'system', appScopes: ['m'], unregistered: false, signature: 'fn s()',
       loc: { file: 'm.rs', line: 1, col: 1, byteStart: 0, byteEnd: 1 } },
   ],
   states: [
