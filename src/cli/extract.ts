@@ -5,7 +5,7 @@ import { createRustParser } from '../parser.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
 import { buildGraph } from '../core/graph.ts';
 import { layout, type LayoutedGraph } from '../layout/elk.ts';
-import { layoutTiers, type Tiers } from '../layout/tiers.ts';
+import { layoutTiers, type GroupMode, type Tiers } from '../layout/tiers.ts';
 import { findAmbiguities, type AmbiguityReport } from '../analysis/ambiguity.ts';
 import type { AtlasIR } from '../core/ir.ts';
 import type { Coverage, SourceFile } from '../dialects/types.ts';
@@ -55,7 +55,7 @@ export function modulePathFor(root: string, file: string, rootIsFile: boolean): 
   return rel.replace(/\.rs$/, '').split(sep).join('::');
 }
 
-export async function extractCorpus(root: string): Promise<Artifact> {
+export async function extractCorpus(root: string, groupMode: GroupMode = 'crate'): Promise<Artifact> {
   const parser = createRustParser();
   const rootIsFile = statSync(root).isFile();
   const files = rustFiles(root);
@@ -76,7 +76,7 @@ export async function extractCorpus(root: string): Promise<Artifact> {
   const ambiguity = findAmbiguities(ir);
   const graph = buildGraph(ir);
   const positioned = await layout(graph);
-  const tiers = await layoutTiers(graph, ir);
+  const tiers = await layoutTiers(graph, ir, groupMode);
 
   return {
     meta: {

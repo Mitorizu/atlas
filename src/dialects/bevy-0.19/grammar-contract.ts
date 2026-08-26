@@ -15,6 +15,8 @@ export const REQUIRED_NODES: Readonly<Record<string, readonly string[]>> = {
   function_item: ['name', 'parameters', 'body', 'type_parameters'],
   struct_item: ['name', 'body'],
   enum_item: ['name'],
+  type_item: ['name'],
+  self_parameter: [],
   impl_item: ['trait', 'type', 'body'],
   declaration_list: [],
   attribute_item: [],

@@ -19,7 +19,20 @@ export type AccessMode =
   /** Declared dependency with undeclared direction; for DI-style dialects (§4.2). */
   | 'unknown';
 
-export type StateCategory = 'component' | 'resource' | 'message' | 'event' | 'synthetic';
+export type StateCategory =
+  | 'component'
+  | 'resource'
+  | 'message'
+  | 'event'
+  | 'synthetic'
+  /**
+   * A project-declared type named in a function signature (§2 generalised).
+   *
+   * ECS was never special: `Query<&mut Transform>` declares access at a boundary, and so
+   * does `fn plan(net: &RoadNetwork) -> Vec<Waypoint>`. Restricting the model to ECS
+   * wrappers left 93% of a real workspace invisible.
+   */
+  | 'type';
 
 export interface SourceLoc {
   file: string;
@@ -64,7 +77,8 @@ export interface Registration {
 export interface ExecutorNode {
   id: ExecutorId;
   display: string;
-  kind: 'system' | 'observer' | 'closure';
+  /** `function` is an ordinary fn related to types by its signature, not a scheduled system. */
+  kind: 'system' | 'observer' | 'closure' | 'function';
   /** Turbofish at the registration site; part of identity (§6.2). */
   typeArgs?: string[];
   /** Type arguments are themselves generic params (`::<S>`) — excluded from §8. */
@@ -92,6 +106,12 @@ export interface Access {
   filters?: FilterExpr;
   /** The custom `SystemParam` this access was expanded from (§7.2). */
   viaParam?: string;
+  /**
+   * True when the relation came from an ordinary signature rather than a declared ECS
+   * access: a parameter `reads` its type, a return type is `written`. These never take part
+   * in ambiguity analysis, which is about concurrent memory access (§8).
+   */
+  viaSignature?: boolean;
   loc: SourceLoc;
 }
 

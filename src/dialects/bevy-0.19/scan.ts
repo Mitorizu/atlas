@@ -4,7 +4,7 @@ import type { SourceFile } from '../types.ts';
 import { collectDeclarations, descend, enclosingModules, type Declarations } from './declarations.ts';
 import { analyzeParam, type RawAccess } from './params.ts';
 import { leafLabel, methodCalls, walkTerm, OBSERVER_SCHEDULE, type Modifiers } from './registration.ts';
-import { baseName } from './types.ts';
+import { baseName, renderType } from './types.ts';
 import type {
   CandidateFact,
   DeclaredAccess,
@@ -34,6 +34,19 @@ function signatureOf(node: Parser.SyntaxNode, text: string): string {
 export function modulePathOf(node: Parser.SyntaxNode, base: string): string {
   const inner = enclosingModules(node);
   return inner.length > 0 ? `${base}::${inner.join('::')}` : base;
+}
+
+/**
+ * Module path for an item, with the enclosing `impl` type included.
+ *
+ * One module routinely holds several `impl` blocks that each define `fmt`, `get` or `new`;
+ * without the type in the path they collapse into one node. Same lesson as inner `mod`
+ * blocks at M2, arriving again for methods (§6.2).
+ */
+function ownerPathOf(node: Parser.SyntaxNode, base: string): string {
+  const modulePath = modulePathOf(node, base);
+  const owner = enclosingImplOwner(node);
+  return owner === null ? modulePath : `${modulePath}::${owner}`;
 }
 
 /** The plugin type whose `impl Plugin for X` (or `impl PluginGroup for X`) encloses a node. */
@@ -67,6 +80,61 @@ function declaredAccess(params: Parser.SyntaxNode, decls: Declarations): Declare
     if (result.observes !== undefined) observes = result.observes;
   }
   return observes === undefined ? { accesses } : { accesses, observes };
+}
+
+/** Every type this file declares: struct, enum, or alias. */
+function declaredTypes(root: Parser.SyntaxNode): string[] {
+  const names: string[] = [];
+  descend(root, (node) => {
+    if (node.type !== 'struct_item' && node.type !== 'enum_item' && node.type !== 'type_item') return;
+    const name = node.childForFieldName('name')?.text;
+    if (name) names.push(name);
+  });
+  return names;
+}
+
+/**
+ * Type identifiers named anywhere inside a signature fragment.
+ *
+ * Deliberately shallow: it collects names, and `link` decides which are project types by
+ * intersecting with what the corpus declares. Resolving them properly would need name
+ * resolution, which §2 rules out.
+ */
+function signatureTypes(node: Parser.SyntaxNode | null, into: Set<string>): void {
+  if (!node) return;
+  if (node.type === 'type_identifier') into.add(node.text);
+  for (const child of node.children) signatureTypes(child, into);
+}
+
+/** The `impl` type enclosing a method, so `impl RoadNetwork { fn lanes(&self) .. }` links them. */
+function enclosingImplType(node: Parser.SyntaxNode): string | null {
+  for (let current = node.parent; current; current = current.parent) {
+    if (current.type !== 'impl_item') continue;
+    const typeNode = current.childForFieldName('type');
+    if (typeNode) return baseName(typeNode);
+  }
+  return null;
+}
+
+/**
+ * The impl block a method belongs to, disambiguated by trait.
+ *
+ * `impl From<LineList> for Mesh` and `impl From<LineStrip> for Mesh` both define `from` on
+ * the same type; only the trait tells them apart. Mirrors Rust's own `<Type as Trait>`
+ * disambiguation syntax.
+ */
+function enclosingImplOwner(node: Parser.SyntaxNode): string | null {
+  for (let current = node.parent; current; current = current.parent) {
+    if (current.type !== 'impl_item') continue;
+    const typeNode = current.childForFieldName('type');
+    if (!typeNode) continue;
+    // renderType, not baseName: `impl TargetUpdate for Target<Display>` and
+    // `Target<Visibility>` differ only in the generic argument (§7.4).
+    const type = renderType(typeNode);
+    const trait = current.childForFieldName('trait')?.text.replace(/\s+/g, '');
+    return trait === undefined ? type : `${type} as ${trait}`;
+  }
+  return null;
 }
 
 function hasAppRoot(root: Parser.SyntaxNode): boolean {
@@ -135,13 +203,38 @@ export function scanFile(tree: Parser.Tree, file: SourceFile): FileFacts {
     const params = node.childForFieldName('parameters');
     if (!name || !params) return;
     const declared = declaredAccess(params, decls);
-    if (declared.accesses.length === 0) return;
-    candidates.push({
+    const common = {
       name,
-      modPath: modulePathOf(node, file.modulePath),
+      modPath: ownerPathOf(node, file.modulePath),
       loc: loc(file, node),
       signature: signatureOf(node, file.text),
-      ...declared,
+    };
+
+    if (declared.accesses.length > 0) {
+      candidates.push({ ...common, ...declared });
+      return;
+    }
+
+    // No declared ECS access: fall back to the general boundary. Parameters (and the
+    // enclosing `impl` type, for a method receiver) are read; the return type is produced.
+    const reads = new Set<string>();
+    signatureTypes(params, reads);
+    const receiver = params.namedChildren.some((c) => c.type === 'self_parameter')
+      ? enclosingImplType(node)
+      : null;
+    if (receiver) reads.add(receiver);
+
+    const writes = new Set<string>();
+    signatureTypes(node.childForFieldName('return_type'), writes);
+    if (reads.size === 0 && writes.size === 0) return;
+
+    candidates.push({
+      ...common,
+      signatureOnly: true,
+      accesses: [
+        ...[...reads].map((state) => ({ state, category: 'type' as const, mode: 'read' as const, optional: false, scoped: false })),
+        ...[...writes].map((state) => ({ state, category: 'type' as const, mode: 'write' as const, optional: false, scoped: false })),
+      ],
     });
   });
 
@@ -231,6 +324,7 @@ export function scanFile(tree: Parser.Tree, file: SourceFile): FileFacts {
     appRoot,
     pluginDefs: [...decls.plugins.keys()],
     declaredCategories: [...decls.categories],
+    declaredTypes: declaredTypes(root),
     pluginEdges,
     candidates,
     registrations,

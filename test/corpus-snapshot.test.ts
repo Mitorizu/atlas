@@ -115,8 +115,12 @@ describe('M2: corpus snapshot — examples/', () => {
   test('the M3 boundary is where the design says it is', { skip }, () => {
     // Examples are self-contained apps, so scope resolution should mostly succeed here;
     // it is the engine crates (libraries, no App::new) that need pass 4.
+    // Only SYSTEMS carry an app scope. Ordinary functions (kind 'function') relate types
+    // through their signatures and are never registered into an App, so they are unscoped
+    // by definition and excluded from ambiguity analysis (§8).
     const { ir } = load();
-    const unknown = ir.executors.filter((e) => e.appScopes.length === 0).length;
-    assert.ok(unknown / ir.executors.length < 0.2, `${unknown} executors lack scope in a self-contained corpus`);
+    const systems = ir.executors.filter((e) => e.kind !== 'function');
+    const unknown = systems.filter((e) => e.appScopes.length === 0).length;
+    assert.ok(unknown / systems.length < 0.2, `${unknown}/${systems.length} systems lack scope`);
   });
 });

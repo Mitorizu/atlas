@@ -220,6 +220,13 @@ export function linkFacts(dialect: string, facts: FileFacts[]): LinkResult {
   const declaredCategories = new Map<string, StateNode['category']>();
   for (const file of facts) for (const [name, category] of file.declaredCategories) declaredCategories.set(name, category);
 
+  /**
+   * Types the corpus itself declares. A signature reference only becomes a state node if
+   * it is one of these, which is what keeps `Vec`, `String`, `Result` and every other
+   * foreign type out of the graph.
+   */
+  const projectTypes = new Set(facts.flatMap((f) => f.declaredTypes));
+
   const rawStates = new Map<string, { category: StateNode['category']; scoped: boolean }>();
   const noteRaw = (raw: RawAccess): void => {
     const existing = rawStates.get(raw.state);
@@ -229,6 +236,18 @@ export function linkFacts(dialect: string, facts: FileFacts[]): LinkResult {
     }
     rawStates.set(raw.state, { category: raw.category, scoped: raw.scoped });
   };
+  // Signature-derived relations are filtered to project types before anything else sees them.
+  for (const file of facts) {
+    for (const candidate of file.candidates) {
+      if (candidate.signatureOnly === true) {
+        candidate.accesses = candidate.accesses.filter((raw) => projectTypes.has(raw.state));
+      }
+    }
+    file.candidates = file.candidates.filter(
+      (candidate) => candidate.signatureOnly !== true || candidate.accesses.length > 0,
+    );
+  }
+
   for (const file of facts) {
     for (const candidate of file.candidates) for (const raw of candidate.accesses) noteRaw(raw);
     for (const fact of file.registrations) {
@@ -290,6 +309,7 @@ export function linkFacts(dialect: string, facts: FileFacts[]): LinkResult {
         stateId: canonical(raw.state),
         mode: raw.mode,
         optional: raw.optional,
+        ...(candidate.signatureOnly === true ? { viaSignature: true } : {}),
         ...(raw.filters ? { filters: raw.filters } : {}),
         ...(raw.viaParam !== undefined ? { viaParam: raw.viaParam } : {}),
         loc: candidate.loc,
@@ -301,7 +321,11 @@ export function linkFacts(dialect: string, facts: FileFacts[]): LinkResult {
     for (const candidate of file.candidates) {
       const bound = registrationsFor.get(candidate) ?? [];
       const kind: ExecutorNode['kind'] =
-        candidate.observes !== undefined || bound.some((f) => f.schedule === 'Observer') ? 'observer' : 'system';
+        candidate.signatureOnly === true
+          ? 'function'
+          : candidate.observes !== undefined || bound.some((f) => f.schedule === 'Observer')
+            ? 'observer'
+            : 'system';
       const instantiations = bound.length > 0 ? bound.map((f) => f.typeArgs) : [[] as string[]];
       const seen = new Set<string>();
 

@@ -94,7 +94,7 @@ export function GroupNode({ data }: NodeProps<Node<GroupData>>) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <div className="group-head">
         <span className="label">{data.label}</span>
-        <span className="tag">{data.executors} systems</span>
+        <span className="tag">{data.executors} fns</span>
         {data.states > 0 ? <span className="tag">{data.states} state</span> : null}
       </div>
       <div className="group-state">

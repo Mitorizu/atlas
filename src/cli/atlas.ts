@@ -6,6 +6,7 @@ import { isMain } from '../is-main.ts';
 import { GitError } from '../git/repo.ts';
 import { buildFocusArtifact, formatDelta, runDiff } from './diff.ts';
 import { extractCorpus } from './extract.ts';
+import type { GroupMode } from '../layout/tiers.ts';
 import { serve } from './serve.ts';
 
 /**
@@ -38,6 +39,7 @@ Options
   -o <path>       artifact output path
   --port N        port for --view / serve (default: an unused one)
   --watch         re-extract when files change (with --view)
+  --group MODE    map regions: 'crate' (default) or 'cluster' (map)
 `;
 
 export function flagValue(args: string[], name: string): string | undefined {
@@ -50,7 +52,7 @@ export function positionals(args: string[]): string[] {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg.startsWith('-')) {
-      if (['-o', '--hops', '--port', '-C'].includes(arg)) i++; // skip the value
+      if (['-o', '--hops', '--port', '-C', '--group'].includes(arg)) i++; // skip the value
       continue;
     }
     out.push(arg);
@@ -157,12 +159,17 @@ export async function run(): Promise<void> {
         process.exit(2);
       }
       const out = flagValue(args, '-o') ?? defaultOut('map.json');
-      const artifact = await extractCorpus(resolve(workdir, target));
+      const requested = flagValue(args, '--group') ?? 'crate';
+      if (requested !== 'crate' && requested !== 'cluster') {
+        console.error(`--group must be 'crate' or 'cluster', got '${requested}'`);
+        process.exit(2);
+      }
+      const artifact = await extractCorpus(resolve(workdir, target), requested as GroupMode);
       mkdirSync(dirname(out), { recursive: true });
       writeFileSync(out, JSON.stringify(artifact) + '\n');
       console.log(
         `${artifact.meta.files} file(s)  ${artifact.ir.executors.length} executors  ` +
-          `${artifact.ir.states.length} state  -> ${out}`,
+          `${artifact.ir.states.length} state  ${artifact.tiers.street.groups.length} ${requested} regions  -> ${out}`,
       );
       if (command === 'map' || view) await serveArtifact(out, port);
       return;

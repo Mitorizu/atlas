@@ -3,6 +3,7 @@ import type { ElkNode } from 'elkjs/lib/elk-api.js';
 import type { AtlasIR } from '../core/ir.ts';
 import type { Graph, GraphEdge, GraphNode } from '../core/graph.ts';
 import type { PositionedNode } from './elk.ts';
+import { clusterExecutors } from '../core/cluster.ts';
 
 /**
  * Three precomputed LOD tiers (DESIGN.md §9.2).
@@ -44,14 +45,38 @@ export interface Tiers {
  * several groups share is a bridge and stays at the top level, which is exactly the
  * cross-cutting structure the orientation view exists to show.
  */
+/**
+ * Structural path segments that carry no architectural meaning. `crates/movement/src/x.rs`
+ * should group as `movement`, not as `crates` -- which is what a naive "first segment" rule
+ * produced, collapsing an entire 10-crate workspace into one region.
+ */
+const STRUCTURAL_SEGMENTS = new Set(['crates', 'src', 'lib', 'source', 'packages', 'apps']);
+
 export function groupOf(modulePath: string): string {
-  const [head] = modulePath.split('::');
-  return head ?? modulePath;
+  const segments = modulePath.split('::');
+  for (const segment of segments) {
+    if (!STRUCTURAL_SEGMENTS.has(segment)) return segment;
+  }
+  return segments[0] ?? modulePath;
 }
 
-export function assignGroups(ir: AtlasIR): Map<string, string> {
+/** How the orientation view carves the codebase into regions. */
+export type GroupMode = 'crate' | 'cluster';
+
+export function assignGroups(ir: AtlasIR, mode: GroupMode = 'crate'): Map<string, string> {
   const assignment = new Map<string, string>();
-  for (const executor of ir.executors) assignment.set(executor.id, groupOf(executor.id));
+
+  if (mode === 'cluster') {
+    const { assignment: clustered } = clusterExecutors(ir);
+    for (const executor of ir.executors) {
+      // An executor that clustered with nothing keeps its module as a fallback region,
+      // rather than vanishing from a view that is supposed to show the whole codebase.
+      const cluster = clustered.get(executor.id);
+      assignment.set(executor.id, cluster === undefined ? groupOf(executor.id) : clusterLabel(cluster, ir));
+    }
+  } else {
+    for (const executor of ir.executors) assignment.set(executor.id, groupOf(executor.id));
+  }
 
   const touchedBy = new Map<string, Set<string>>();
   for (const access of ir.accesses) {
@@ -69,9 +94,19 @@ export function assignGroups(ir: AtlasIR): Map<string, string> {
 
 const PADDING = 26;
 
+/**
+ * A cluster is named after its most common module plus its size, so a region carries some
+ * meaning rather than an opaque id. Deterministic: the seed id breaks ties.
+ */
+function clusterLabel(clusterId: string, ir: AtlasIR): string {
+  const executorIds = new Set(ir.executors.map((e) => e.id));
+  if (!executorIds.has(clusterId)) return clusterId;
+  return `${groupOf(clusterId)}~${clusterId.split('::').pop() ?? clusterId}`;
+}
+
 /** Runs one hierarchical layout and derives both tiers from it. */
-export async function layoutTiers(graph: Graph, ir: AtlasIR): Promise<Tiers> {
-  const assignment = assignGroups(ir);
+export async function layoutTiers(graph: Graph, ir: AtlasIR, mode: GroupMode = 'crate'): Promise<Tiers> {
+  const assignment = assignGroups(ir, mode);
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
 
   const grouped = new Map<string, GraphNode[]>();

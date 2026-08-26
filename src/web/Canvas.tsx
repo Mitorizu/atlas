@@ -76,7 +76,10 @@ export function Canvas({
   const hasTiers = artifact.tiers !== undefined && artifact.meta.mode !== 'focus';
   const [override, setOverride] = useState<Tier | null>(null);
   const auto = useLodTier(hasTiers && override === null);
-  const tier: Tier = hasTiers ? (override ?? auto) : 'street';
+  // A whole-codebase map opens at Orbit: the regions are the point, and Street on a real
+  // workspace is a few hundred nodes at once. A focus view has no tiers and stays flat.
+  const [touched, setTouched] = useState(false);
+  const tier: Tier = hasTiers ? (override ?? (touched ? auto : 'orbit')) : 'street';
 
   const { nodes, edges } = useMemo(() => {
     const ghost = (id: string): boolean => artifact.focus?.meta[id]?.role === 'removed';
@@ -125,6 +128,7 @@ export function Canvas({
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
         onPaneClick={onDeselect}
+        onMoveStart={() => setTouched(true)}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.01}

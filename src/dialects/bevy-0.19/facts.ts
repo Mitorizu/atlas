@@ -19,6 +19,8 @@ export interface DeclaredAccess {
 
 export interface CandidateFact extends DeclaredAccess {
   name: string;
+  /** True when accesses came from an ordinary signature, not declared ECS params. */
+  signatureOnly?: boolean;
   /** Full module path including enclosing `mod` blocks (§6.2). */
   modPath: string;
   loc: SourceLoc;
@@ -60,6 +62,11 @@ export interface FileFacts {
   pluginDefs: string[];
   /** Categories from local `#[derive(..)]` sites; authoritative over usage inference (§7.3). */
   declaredCategories: Array<[string, StateCategory]>;
+  /**
+   * Types declared in this file (struct/enum/type alias). Collected corpus-wide so a
+   * signature reference can be told apart from `Vec`, `String` and other foreign types.
+   */
+  declaredTypes: string[];
   pluginEdges: PluginEdgeFact[];
   candidates: CandidateFact[];
   registrations: RegistrationFact[];
