@@ -106,13 +106,8 @@ export interface Artifact {
     accesses: IRAccess[];
   };
   layout: { nodes: LayoutNode[]; edges: LayoutEdge[] };
-  /** Precomputed LOD tiers, present on orientation-mode artifacts (§9.2). */
-  tiers?: {
-    orbit: { nodes: unknown[]; edges: LayoutEdge[] };
-    street: { nodes: LayoutNode[]; edges: LayoutEdge[]; groups: unknown[] };
-    width: number;
-    height: number;
-  };
+  /** Nested scene with progressive per-region reveal, on orientation artifacts (§9.2). */
+  scene?: import('../layout/scene.ts').Scene;
 }
 
 /** Everything the Inspector needs about one node, derived from the artifact. */

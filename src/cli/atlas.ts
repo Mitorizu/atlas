@@ -169,7 +169,7 @@ export async function run(): Promise<void> {
       writeFileSync(out, JSON.stringify(artifact) + '\n');
       console.log(
         `${artifact.meta.files} file(s)  ${artifact.ir.executors.length} executors  ` +
-          `${artifact.ir.states.length} state  ${artifact.tiers.street.groups.length} ${requested} regions  -> ${out}`,
+          `${artifact.ir.states.length} state  ${artifact.scene.regions.length} ${requested} regions  -> ${out}`,
       );
       if (command === 'map' || view) await serveArtifact(out, port);
       return;

@@ -21,11 +21,14 @@ export interface SystemData extends Record<string, unknown>, DiffData {
   unregistered?: boolean;
   /** Ubiquitous state shown inline instead of as an edge (§7.4). */
   badges?: Badge[];
+  /** Too small to read: drawn as a mark rather than a labelled box (§9.2). */
+  compact?: boolean;
 }
 export interface DataNodeData extends Record<string, unknown>, DiffData {
   label: string;
   category: string;
   ubiquitous?: boolean;
+  compact?: boolean;
 }
 
 /** Diff role and conflict carried by CLASS, so form and opacity do the encoding, never
@@ -38,7 +41,7 @@ const handleStyle = { opacity: 0, width: 1, height: 1 } as const;
 
 export function SystemNode({ data }: NodeProps<Node<SystemData>>) {
   return (
-    <div className={`node system${data.unregistered ? ' unregistered' : ''}${diffClass(data)}`}>
+    <div className={`node system${data.unregistered ? ' unregistered' : ''}${data.compact ? ' compact' : ''}${diffClass(data)}`}>
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <span className="label">{data.label}</span>
       {data.schedule ? <span className="tag">{data.schedule}</span> : null}
@@ -61,7 +64,7 @@ export function SystemNode({ data }: NodeProps<Node<SystemData>>) {
 export function DataNode({ data }: NodeProps<Node<DataNodeData>>) {
   const color = CATEGORY_COLOR[data.category] ?? CATEGORY_COLOR['synthetic']!;
   return (
-    <div className={`node data${diffClass(data)}`} style={{ borderColor: color }}>
+    <div className={`node data${data.compact ? ' compact' : ''}${diffClass(data)}`} style={{ borderColor: color }}>
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <span className="dot" style={{ background: color }} />
       <span className="label">{data.label}</span>
@@ -77,13 +80,19 @@ export interface GroupData extends Record<string, unknown> {
   width: number;
   height: number;
   topState: Array<{ id: string; label: string; category: string }>;
+  /** Contents are being shown inside this box. */
+  open?: boolean;
+  /** Members not yet revealed at this zoom. */
+  hidden?: number;
+  /** Wanted to open but lost the node budget — must be visible, not mysterious. */
+  capped?: boolean;
 }
 
 /** A module region at the Orbit tier: the whole group collapsed to one box (§9.2). */
 export function GroupNode({ data }: NodeProps<Node<GroupData>>) {
   return (
     <div
-      className="node group"
+      className={`node group${data.open === true ? ' open' : ''}`}
       style={{
         width: data.width,
         height: data.height,
@@ -97,16 +106,26 @@ export function GroupNode({ data }: NodeProps<Node<GroupData>>) {
         <span className="tag">{data.executors} fns</span>
         {data.states > 0 ? <span className="tag">{data.states} state</span> : null}
       </div>
-      <div className="group-state">
-        {data.topState.map((s) => (
-          <span key={s.id} className="badge" style={{ borderColor: CATEGORY_COLOR[s.category] }}>
-            {s.label}
-          </span>
-        ))}
-        {data.states > data.topState.length ? (
-          <span className="badge more">+{data.states - data.topState.length}</span>
-        ) : null}
-      </div>
+      {data.open === true ? (
+        (data.hidden ?? 0) > 0 ? (
+          <div className="group-state">
+            <span className="badge more">
+              +{data.hidden} more{data.capped === true ? ' (budget)' : ''}
+            </span>
+          </div>
+        ) : null
+      ) : (
+        <div className="group-state">
+          {data.topState.map((s) => (
+            <span key={s.id} className="badge" style={{ borderColor: CATEGORY_COLOR[s.category] }}>
+              {s.label}
+            </span>
+          ))}
+          {data.states > data.topState.length ? (
+            <span className="badge more">+{data.states - data.topState.length}</span>
+          ) : null}
+        </div>
+      )}
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
   );

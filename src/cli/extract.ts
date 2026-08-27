@@ -5,7 +5,8 @@ import { createRustParser } from '../parser.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
 import { buildGraph } from '../core/graph.ts';
 import { layout, type LayoutedGraph } from '../layout/elk.ts';
-import { layoutTiers, type GroupMode, type Tiers } from '../layout/tiers.ts';
+import type { GroupMode } from '../layout/tiers.ts';
+import { layoutScene, SCENE_VERSION, type Scene } from '../layout/scene.ts';
 import { findAmbiguities, type AmbiguityReport } from '../analysis/ambiguity.ts';
 import type { AtlasIR } from '../core/ir.ts';
 import type { Coverage, SourceFile } from '../dialects/types.ts';
@@ -26,8 +27,8 @@ export interface Artifact {
   ambiguity: AmbiguityReport;
   ir: AtlasIR;
   layout: LayoutedGraph;
-  /** Precomputed LOD tiers for the orientation view (§9.2). */
-  tiers: Tiers;
+  /** One nested scene with progressive per-region reveal (§9.2). */
+  scene: Scene;
 }
 
 export function rustFiles(root: string): string[] {
@@ -76,7 +77,7 @@ export async function extractCorpus(root: string, groupMode: GroupMode = 'crate'
   const ambiguity = findAmbiguities(ir);
   const graph = buildGraph(ir);
   const positioned = await layout(graph);
-  const tiers = await layoutTiers(graph, ir, groupMode);
+  const scene = await layoutScene(graph, ir, groupMode);
 
   return {
     meta: {
@@ -90,7 +91,7 @@ export async function extractCorpus(root: string, groupMode: GroupMode = 'crate'
     ambiguity,
     ir,
     layout: positioned,
-    tiers,
+    scene,
   };
 }
 
@@ -138,9 +139,9 @@ async function main(): Promise<void> {
     console.log(`  unresolved registrations e.g. ${coverage.unresolvedSamples.slice(0, 3).join(', ')}`);
   }
   console.log(
-    `  tiers: ${artifact.tiers.street.groups.length} module groups, ` +
-      `${artifact.tiers.orbit.nodes.length} orbit nodes, ` +
-      `${Math.round(artifact.tiers.width)}x${Math.round(artifact.tiers.height)}`,
+    `  scene v${SCENE_VERSION}: ${artifact.scene.regions.length} regions, ` +
+      `${artifact.scene.shared.length} shared state, ` +
+      `${Math.round(artifact.scene.width)}x${Math.round(artifact.scene.height)}`,
   );
   console.log(`  layout ${Math.round(artifact.layout.width)}x${Math.round(artifact.layout.height)} -> ${out}`);
 }
