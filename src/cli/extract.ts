@@ -5,7 +5,7 @@ import { createRustParser } from '../parser.ts';
 import { bevy019 } from '../dialects/bevy-0.19/index.ts';
 import { buildGraph } from '../core/graph.ts';
 import { layout, type LayoutedGraph } from '../layout/elk.ts';
-import type { GroupMode } from '../layout/tiers.ts';
+import type { GroupMode } from '../core/grouping.ts';
 import { layoutScene, SCENE_VERSION, type Scene } from '../layout/scene.ts';
 import { findAmbiguities, type AmbiguityReport } from '../analysis/ambiguity.ts';
 import type { AtlasIR } from '../core/ir.ts';

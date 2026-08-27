@@ -6,7 +6,7 @@ import { isMain } from '../is-main.ts';
 import { GitError } from '../git/repo.ts';
 import { buildFocusArtifact, formatDelta, runDiff } from './diff.ts';
 import { extractCorpus } from './extract.ts';
-import type { GroupMode } from '../layout/tiers.ts';
+import type { GroupMode } from '../core/grouping.ts';
 import { serve } from './serve.ts';
 
 /**

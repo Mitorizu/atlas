@@ -2,15 +2,16 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode } from 'elkjs/lib/elk-api.js';
 import type { AtlasIR } from '../core/ir.ts';
 import type { Graph, GraphEdge, GraphNode } from '../core/graph.ts';
-import { assignGroups, type GroupMode } from './tiers.ts';
+import { assignGroups, type GroupMode } from '../core/grouping.ts';
 
 /**
  * One nested scene, replacing the three precomputed tiers (DESIGN.md §9.2).
  *
  * Tiers switched the whole map between three states at once. This is the Google Earth
- * model instead: every region is always present, and its contents reveal based on *that
- * region's* apparent size — zooming into one region leaves the others as boxes, the way
- * zooming into Europe does not load Asia's streets.
+ * model instead: every region is always present, and its contents reveal when *its members*
+ * would be legible (see src/web/reveal.ts). Regions stay independent because the ones you
+ * are not looking at leave the viewport — the way zooming into Europe does not load Asia's
+ * streets.
  *
  * Geometry is still computed once, offline. Member positions are stored RELATIVE to their
  * region so the viewer can nest them directly and a region can open without anything

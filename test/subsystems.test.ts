@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractSources } from '../src/core/pipeline.ts';
 import { clusterExecutors, crossGroupClusters } from '../src/core/cluster.ts';
-import { assignGroups, groupOf } from '../src/layout/tiers.ts';
+import { assignGroups, groupOf } from '../src/core/grouping.ts';
 
 const ir = (files: Record<string, string>) =>
   extractSources(Object.entries(files).map(([path, text]) => ({ path, text }))).ir;
